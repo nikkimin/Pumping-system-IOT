@@ -6,8 +6,8 @@ const int RAIN_SENSOR_PIN = 7;
 const int SOIL_SENSOR_PIN = A0;
 const int PUMP_RELAY_PIN = 8;
 
-// UART với ESP32 (Chân 4-RX, 5-TX)
-SoftwareSerial ESP32Serial(4, 5); // RX, TX
+// UART với ESP32 (Chân 2-RX, 3-TX)
+SoftwareSerial ESP32Serial(2, 3); // RX, TX
 
 // Biến định thời
 const long SEND_INTERVAL = 5000;
