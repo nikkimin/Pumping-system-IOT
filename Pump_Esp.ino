@@ -6,9 +6,6 @@
 #include <PubSubClient.h>
 #include <EEPROM.h>
 
-// ========== WIFI MANAGER ==========
-WiFiManager wm;
-
 // ========== CẤU HÌNH BLYNK MQTT ==========
 #define BLYNK_TEMPLATE_ID "TMPL6vBXbZ3DJ"
 #define BLYNK_TEMPLATE_NAME "Smart Pumping system"
@@ -19,6 +16,11 @@ WiFiManager wm;
 #define VIRTUAL_PIN_MODE 3
 #define VIRTUAL_PIN_SPEED 4
 #define VIRTUAL_PIN_STATE 5
+
+#include <BlynkSimpleEsp32.h>
+
+// ========== WIFI MANAGER ==========
+WiFiManager wm;
 
 // ========== EEPROM CONFIG ==========
 #define EEPROM_SIZE 512
@@ -57,6 +59,14 @@ int wifiCount = 0;
 String savedSSID = "";
 String savedPassword = "";
 
+// ========== PREVIOUS STATE TRACKING ==========
+bool prevPumpStatus = false;
+bool prevAutoMode = true;
+int prevPumpSpeed = 50;
+
+// ========== EVENT LOG DUPLICATE PREVENTION ==========
+String lastLogMessage = "";
+
 // ========== MEMORY PROTECTION ==========
 const int MAX_LOG_LENGTH = 2000;  // Reduced from 3000 for better memory management
 const int LOG_TRIM_LENGTH = 1500; // Trim when log exceeds this length
@@ -93,6 +103,32 @@ void loadSetupFlag();
 void saveSetupFlag(bool completed);
 void handleResetSetup();
 
+// ========== BLYNK FUNCTIONS ==========
+BLYNK_WRITE(VIRTUAL_PIN_PUMP) {
+    int pinValue = param.asInt();
+    if (pinValue == 1) {
+        UnoSerial.println("PUMP_ON");
+        pumpStatus = true;
+        addLog("Blynk: Pump ON");
+    } else {
+        UnoSerial.println("PUMP_OFF");
+        pumpStatus = false;
+        addLog("Blynk: Pump OFF");
+    }
+}
+
+BLYNK_WRITE(VIRTUAL_PIN_MODE) {
+    int pinValue = param.asInt();
+    autoMode = (pinValue == 1);
+    addLog("Blynk: Mode " + String(autoMode ? "Auto" : "Manual"));
+}
+
+BLYNK_WRITE(VIRTUAL_PIN_SPEED) {
+    int pinValue = param.asInt();
+    pumpSpeed = pinValue;
+    addLog("Blynk: Speed " + String(pumpSpeed) + "%");
+}
+
 // ========== SETUP ==========
 void setup() {
     Serial.begin(115200);
@@ -113,6 +149,12 @@ void setup() {
         addLog("STA Mode: Connected to " + WiFi.SSID());
         addLog("IP: " + WiFi.localIP().toString());
         wifiConfigured = true;
+
+        // Initialize Blynk after WiFi connection
+        Blynk.config(BLYNK_AUTH_TOKEN);
+        Blynk.connect();
+        Serial.println("✅ Blynk initialized");
+        addLog("Blynk initialized");
     } else {
         Serial.println("❌ Failed to connect to WiFi, starting AP mode");
         Serial.println("🌐 Access captive portal at: http://" + WiFi.softAPIP().toString());
@@ -141,6 +183,9 @@ void loop() {
             reconnectMQTT();
         }
         mqttClient.loop();
+
+        // Run Blynk
+        Blynk.run();
 
         static unsigned long lastPublish = 0;
         if (millis() - lastPublish > 5000) {
@@ -347,14 +392,19 @@ void handleGetData() {
 void handleControlPump() {
     if (server.hasArg("state")) {
         String state = server.arg("state");
-        if (state == "on") {
-            UnoSerial.println("PUMP_ON");
-            pumpStatus = true;
-            addLog("Manual: Pump ON");
-        } else {
-            UnoSerial.println("PUMP_OFF");
-            pumpStatus = false;
-            addLog("Manual: Pump OFF");
+        bool newPumpStatus = (state == "on");
+
+        if (newPumpStatus != prevPumpStatus) {
+            if (newPumpStatus) {
+                UnoSerial.println("PUMP_ON");
+                pumpStatus = true;
+                addLog("Manual: Pump ON");
+            } else {
+                UnoSerial.println("PUMP_OFF");
+                pumpStatus = false;
+                addLog("Manual: Pump OFF");
+            }
+            prevPumpStatus = newPumpStatus;
         }
         server.send(200, "text/plain", "OK");
     } else {
@@ -441,17 +491,33 @@ void reconnectMQTT() {
 
 void publishData() {
     if (!mqttClient.connected()) return;
-    
-    mqttClient.publish((String(BLYNK_AUTH_TOKEN) + "/v" + String(VIRTUAL_PIN_SOIL)).c_str(), 
+
+    mqttClient.publish((String(BLYNK_AUTH_TOKEN) + "/v" + String(VIRTUAL_PIN_SOIL)).c_str(),
                        String(soilMoisture).c_str());
-    mqttClient.publish((String(BLYNK_AUTH_TOKEN) + "/v" + String(VIRTUAL_PIN_RAIN)).c_str(), 
+    mqttClient.publish((String(BLYNK_AUTH_TOKEN) + "/v" + String(VIRTUAL_PIN_RAIN)).c_str(),
                        String(rainStatus).c_str());
-    mqttClient.publish((String(BLYNK_AUTH_TOKEN) + "/v" + String(VIRTUAL_PIN_STATE)).c_str(), 
+    mqttClient.publish((String(BLYNK_AUTH_TOKEN) + "/v" + String(VIRTUAL_PIN_STATE)).c_str(),
                        String(pumpStatus).c_str());
+
+    // Send data to Blynk dashboard
+    if (Blynk.connected()) {
+        Blynk.virtualWrite(VIRTUAL_PIN_SOIL, soilMoisture);
+        Blynk.virtualWrite(VIRTUAL_PIN_RAIN, rainStatus);
+        Blynk.virtualWrite(VIRTUAL_PIN_PUMP, pumpStatus);
+        Blynk.virtualWrite(VIRTUAL_PIN_MODE, autoMode);
+        Blynk.virtualWrite(VIRTUAL_PIN_SPEED, pumpSpeed);
+        Blynk.virtualWrite(VIRTUAL_PIN_STATE, pumpStatus);
+    }
 }
 
 // ========== HELPER FUNCTIONS ==========
 void addLog(String message) {
+    // Prevent duplicate consecutive prints
+    if (message == lastLogMessage) {
+        return;  // Skip adding duplicate message
+    }
+    lastLogMessage = message;  // Update last message
+
     time_t now = time(nullptr);
     struct tm timeinfo;
 
