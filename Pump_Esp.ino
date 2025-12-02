@@ -1,9 +1,13 @@
 #include <WiFi.h>
 #include <WebServer.h>
+#include <WiFiManager.h>
 #include <ArduinoJson.h>
 #include <time.h>
 #include <PubSubClient.h>
 #include <EEPROM.h>
+
+// ========== WIFI MANAGER ==========
+WiFiManager wm;
 
 // ========== CẤU HÌNH BLYNK MQTT ==========
 #define BLYNK_TEMPLATE_ID "TMPL6vBXbZ3DJ"
@@ -20,6 +24,7 @@
 #define EEPROM_SIZE 512
 #define SSID_ADDR 0
 #define PASS_ADDR 32
+#define SETUP_FLAG_ADDR 64
 
 // ========== HARDWARE CONFIG ==========
 HardwareSerial UnoSerial(2);
@@ -33,6 +38,8 @@ bool pumpStatus = false;
 bool autoMode = true;
 int pumpSpeed = 50;
 bool wifiConfigured = false;
+bool setupCompleted = false;
+bool mqttConnected = false;
 
 // ========== NETWORK OBJECTS ==========
 WebServer server(80);
@@ -47,21 +54,23 @@ const char* TZ_INFO = "Asia/Bangkok";
 String eventLog = "";
 String availableWifi[20];
 int wifiCount = 0;
-
-// ========== ADD THESE MISSING VARIABLES ==========
 String savedSSID = "";
 String savedPassword = "";
+
+// ========== MEMORY PROTECTION ==========
+const int MAX_LOG_LENGTH = 2000;  // Reduced from 3000 for better memory management
+const int LOG_TRIM_LENGTH = 1500; // Trim when log exceeds this length
+const int MIN_FREE_HEAP = 10000;  // Minimum free heap threshold (10KB)
+const int MAX_STRING_LENGTH = 256; // Maximum string length for safety
 
 // ========== HTML CONTENTS (DECLARE HERE) ==========
 extern const char* wifiConfigHTML;
 extern const char* htmlContent;
 
 // ========== FUNCTION PROTOTYPES ==========
-void setupWiFi();
 void scanWiFi();
 void connectToWiFi(String ssid, String password);
-void saveWiFiCreds(String ssid, String password);
-void loadWiFiCreds();
+
 void setupWebServer();
 void setupMQTT();
 void handleRoot();
@@ -80,6 +89,9 @@ void mqttCallback(char* topic, byte* payload, unsigned int length);
 void reconnectMQTT();
 void publishData();
 String getWiFiListHTML();
+void loadSetupFlag();
+void saveSetupFlag(bool completed);
+void handleResetSetup();
 
 // ========== SETUP ==========
 void setup() {
@@ -90,17 +102,20 @@ void setup() {
     
     Serial.println("\n🚀 ESP32 Smart Irrigation System Starting...");
     
-    // Load saved WiFi credentials
+    // Load saved WiFi credentials and setup flag
     loadWiFiCreds();
-    
-    // Try to connect to saved WiFi
-    if (wifiConfigured && savedSSID.length() > 0) {
-        setupWiFi();
+    loadSetupFlag();
+
+    // WiFiManager auto-connect
+    if (wm.autoConnect("SmartIrrigation_AP", "12345678")) {
+        Serial.println("✅ Connected to WiFi using WiFiManager");
+        Serial.println("🌐 Access web interface at: http://" + WiFi.localIP().toString());
+        addLog("STA Mode: Connected to " + WiFi.SSID());
+        addLog("IP: " + WiFi.localIP().toString());
+        wifiConfigured = true;
     } else {
-        Serial.println("📶 WiFi not configured. Starting AP mode...");
-        WiFi.softAP("SmartIrrigation_AP", "12345678");
-        Serial.print("📡 AP IP: ");
-        Serial.println(WiFi.softAPIP());
+        Serial.println("❌ Failed to connect to WiFi, starting AP mode");
+        Serial.println("🌐 Access captive portal at: http://" + WiFi.softAPIP().toString());
         addLog("AP Mode: SmartIrrigation_AP (12345678)");
     }
     
@@ -120,54 +135,28 @@ void setup() {
 void loop() {
     server.handleClient();
     readUARTData();
-    
+
     if (WiFi.status() == WL_CONNECTED) {
         if (!mqttClient.connected()) {
             reconnectMQTT();
         }
         mqttClient.loop();
-        
+
         static unsigned long lastPublish = 0;
         if (millis() - lastPublish > 5000) {
             publishData();
             lastPublish = millis();
         }
-        
+
         if (autoMode) {
             checkAutoWatering();
         }
     }
-    
-    delay(100);
+
+    // Removed delay(100) for real-time updates
 }
 
 // ========== WIFI FUNCTIONS ==========
-void setupWiFi() {
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(savedSSID.c_str(), savedPassword.c_str());
-    
-    Serial.print("📶 Connecting to WiFi: ");
-    Serial.println(savedSSID);
-    
-    int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 30) {
-        delay(500);
-        Serial.print(".");
-        attempts++;
-    }
-    
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("\n✅ WiFi Connected!");
-        Serial.print("📡 IP Address: ");
-        Serial.println(WiFi.localIP());
-        addLog("Connected to: " + savedSSID);
-        addLog("IP: " + WiFi.localIP().toString());
-    } else {
-        Serial.println("\n❌ WiFi Connection Failed!");
-        addLog("WiFi connection failed");
-    }
-}
-
 void scanWiFi() {
     Serial.println("📡 Scanning for WiFi networks...");
     wifiCount = WiFi.scanNetworks();
@@ -276,6 +265,7 @@ void setupWebServer() {
     server.on("/controlPump", HTTP_GET, handleControlPump);
     server.on("/setMode", HTTP_GET, handleSetMode);
     server.on("/setSpeed", HTTP_GET, handleSetSpeed);
+    server.on("/reset-setup", HTTP_GET, handleResetSetup);
     server.onNotFound([]() {
         server.send(404, "text/plain", "404: Not Found");
     });
@@ -328,11 +318,11 @@ void handleWiFiConnect() {
     if (server.hasArg("ssid") && server.hasArg("password")) {
         String ssid = server.arg("ssid");
         String password = server.arg("password");
-        
+
         connectToWiFi(ssid, password);
-        
+
         if (WiFi.status() == WL_CONNECTED) {
-            server.send(200, "application/json", "{\"status\":\"success\",\"ip\":\"" + WiFi.localIP().toString() + "\"}");
+            server.send(200, "application/json", "{\"status\":\"success\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"ssid\":\"" + ssid + "\"}");
         } else {
             server.send(200, "application/json", "{\"status\":\"failed\"}");
         }
@@ -464,7 +454,12 @@ void publishData() {
 void addLog(String message) {
     time_t now = time(nullptr);
     struct tm timeinfo;
-    
+
+    // Reserve memory for eventLog to prevent fragmentation
+    if (eventLog.length() == 0) {
+        eventLog.reserve(MAX_LOG_LENGTH + 100);  // Reserve extra space
+    }
+
     if (localtime_r(&now, &timeinfo)) {
         char timeStr[20];
         strftime(timeStr, sizeof(timeStr), "%H:%M:%S", &timeinfo);
@@ -472,15 +467,18 @@ void addLog(String message) {
     } else {
         eventLog = "[--:--:--] " + message + "<br>" + eventLog;
     }
-    
-    if (eventLog.length() > 3000) {
-        int lastIndex = eventLog.lastIndexOf("<br>", 2000);
+
+    // More aggressive log trimming for memory protection
+    if (eventLog.length() > LOG_TRIM_LENGTH) {
+        int lastIndex = eventLog.lastIndexOf("<br>", LOG_TRIM_LENGTH - 500);
         if (lastIndex != -1) {
             eventLog = eventLog.substring(0, lastIndex);
         }
     }
-    
-    Serial.println("📝 " + message);
+
+    // Monitor memory usage
+    Serial.printf("📝 %s | Log size: %d/%d bytes | Free heap: %d bytes\n",
+                  message.c_str(), eventLog.length(), MAX_LOG_LENGTH, ESP.getFreeHeap());
 }
 
 void readUARTData() {
@@ -554,6 +552,39 @@ String getWiFiListHTML() {
         html += "<option value=\"" + availableWifi[i] + "\">" + availableWifi[i] + "</option>";
     }
     return html;
+}
+
+// ========== SETUP FLAG MANAGEMENT ==========
+void loadSetupFlag() {
+    int flag = EEPROM.read(SETUP_FLAG_ADDR);
+    setupCompleted = (flag == 1);
+    Serial.printf("📖 Setup flag loaded: %s\n", setupCompleted ? "COMPLETED" : "NOT COMPLETED");
+}
+
+void saveSetupFlag(bool completed) {
+    EEPROM.write(SETUP_FLAG_ADDR, completed ? 1 : 0);
+    EEPROM.commit();
+    setupCompleted = completed;
+    Serial.printf("💾 Setup flag saved: %s\n", completed ? "COMPLETED" : "NOT COMPLETED");
+}
+
+void handleResetSetup() {
+    // Reset WiFi credentials
+    for (int i = 0; i < 64; i++) {
+        EEPROM.write(SSID_ADDR + i, 0);
+        EEPROM.write(PASS_ADDR + i, 0);
+    }
+    EEPROM.write(SETUP_FLAG_ADDR, 0);
+    EEPROM.commit();
+
+    // Reset variables
+    savedSSID = "";
+    savedPassword = "";
+    wifiConfigured = false;
+    setupCompleted = false;
+
+    Serial.println("🔄 Setup reset completed");
+    addLog("Setup configuration reset");
 }
 
 // ========== HTML CONTENTS (DEFINE HERE) ==========
@@ -1055,6 +1086,9 @@ const char* htmlContent = R"rawliteral(
             <div style="margin-top: 15px;">
                 <button class="btn btn-primary" onclick="location.href='/wifi-config'">
                     🔧 Cấu Hình WiFi
+                </button>
+                <button class="btn btn-primary" onclick="resetSetup()">
+                    🔄 Reset Setup
                 </button>
                 <button class="btn btn-primary" onclick="location.href='/'">
                     🏠 Trang Chính

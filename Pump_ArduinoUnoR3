@@ -166,19 +166,17 @@ void controlPumpFromESP() {
 // Gửi dữ liệu cảm biến
 void sendSensorData() {
   StaticJsonDocument<200> doc;
-  
+
   doc["soil_moisture"] = readSoilMoisture();
   doc["rain"] = readRainSensor();
   doc["pump_status"] = pumpState;
-  doc["uno_time"] = millis();
-  doc["connected"] = espConnected;
-  
+
   String jsonString;
   serializeJson(doc, jsonString);
-  
+
   // Gửi đến ESP32 qua SoftwareSerial
   ESP32Serial.println(jsonString);
-  
+
   // Debug
   Serial.print("📤 To ESP32: ");
   Serial.println(jsonString);
