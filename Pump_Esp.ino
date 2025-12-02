@@ -2,49 +2,762 @@
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include <time.h>
+#include <PubSubClient.h>
+#include <EEPROM.h>
 
-// WiFi Configuration
-const char* WIFI_SSID = "Binh";
-const char* WIFI_PASS = "20021997";
+// ========== CẤU HÌNH BLYNK MQTT ==========
+#define BLYNK_TEMPLATE_ID "TMPL6vBXbZ3DJ"
+#define BLYNK_TEMPLATE_NAME "Smart Pumping system"
+#define BLYNK_AUTH_TOKEN "09AjF1sQoCmf3KEJKHswN219at_noSyN"
+#define VIRTUAL_PIN_SOIL 0
+#define VIRTUAL_PIN_RAIN 1
+#define VIRTUAL_PIN_PUMP 2
+#define VIRTUAL_PIN_MODE 3
+#define VIRTUAL_PIN_SPEED 4
+#define VIRTUAL_PIN_STATE 5
 
-// Web Server
-WebServer server(80);
+// ========== EEPROM CONFIG ==========
+#define EEPROM_SIZE 512
+#define SSID_ADDR 0
+#define PASS_ADDR 32
 
-// UART with Arduino Uno
+// ========== HARDWARE CONFIG ==========
 HardwareSerial UnoSerial(2);
 const int RXD2 = 16;
 const int TXD2 = 17;
 
-// System State
+// ========== SYSTEM STATE ==========
 int soilMoisture = 0;
 int rainStatus = 0;
 bool pumpStatus = false;
 bool autoMode = true;
 int pumpSpeed = 50;
+bool wifiConfigured = false;
 
-// NTP Time
-const char* TZ_INFO = "Asia/Bangkok";
+// ========== NETWORK OBJECTS ==========
+WebServer server(80);
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
+
+// ========== GLOBAL VARIABLES ==========
+const char* mqttServer = "mqtt.blynk.cc";
+const int mqttPort = 1883;
 const char* ntpServer = "pool.ntp.org";
-
-// Event Log
+const char* TZ_INFO = "Asia/Bangkok";
 String eventLog = "";
+String availableWifi[20];
+int wifiCount = 0;
 
-// ========== KHAI BÁO HÀM TRƯỚC ==========
+// ========== ADD THESE MISSING VARIABLES ==========
+String savedSSID = "";
+String savedPassword = "";
+
+// ========== HTML CONTENTS (DECLARE HERE) ==========
+extern const char* wifiConfigHTML;
+extern const char* htmlContent;
+
+// ========== FUNCTION PROTOTYPES ==========
+void setupWiFi();
+void scanWiFi();
+void connectToWiFi(String ssid, String password);
+void saveWiFiCreds(String ssid, String password);
+void loadWiFiCreds();
+void setupWebServer();
+void setupMQTT();
+void handleRoot();
+void handleWiFiConfig();
+void handleWiFiScan();
+void handleWiFiConnect();
+void handleGetData();
+void handleControlPump();
+void handleSetMode();
+void handleSetSpeed();
 void addLog(String message);
 void readUARTData();
 void checkAutoWatering();
 int getCurrentHour();
-// ========================================
+void mqttCallback(char* topic, byte* payload, unsigned int length);
+void reconnectMQTT();
+void publishData();
+String getWiFiListHTML();
 
-// HTML Interface với emoji thay vì FontAwesome
+// ========== SETUP ==========
+void setup() {
+    Serial.begin(115200);
+    UnoSerial.begin(9600, SERIAL_8N1, RXD2, TXD2);
+    
+    EEPROM.begin(EEPROM_SIZE);
+    
+    Serial.println("\n🚀 ESP32 Smart Irrigation System Starting...");
+    
+    // Load saved WiFi credentials
+    loadWiFiCreds();
+    
+    // Try to connect to saved WiFi
+    if (wifiConfigured && savedSSID.length() > 0) {
+        setupWiFi();
+    } else {
+        Serial.println("📶 WiFi not configured. Starting AP mode...");
+        WiFi.softAP("SmartIrrigation_AP", "12345678");
+        Serial.print("📡 AP IP: ");
+        Serial.println(WiFi.softAPIP());
+        addLog("AP Mode: SmartIrrigation_AP (12345678)");
+    }
+    
+    // Initialize time
+    configTzTime(TZ_INFO, ntpServer);
+    
+    // Setup web server
+    setupWebServer();
+    
+    // Setup MQTT
+    setupMQTT();
+    
+    Serial.println("✅ System initialized successfully");
+}
+
+// ========== MAIN LOOP ==========
+void loop() {
+    server.handleClient();
+    readUARTData();
+    
+    if (WiFi.status() == WL_CONNECTED) {
+        if (!mqttClient.connected()) {
+            reconnectMQTT();
+        }
+        mqttClient.loop();
+        
+        static unsigned long lastPublish = 0;
+        if (millis() - lastPublish > 5000) {
+            publishData();
+            lastPublish = millis();
+        }
+        
+        if (autoMode) {
+            checkAutoWatering();
+        }
+    }
+    
+    delay(100);
+}
+
+// ========== WIFI FUNCTIONS ==========
+void setupWiFi() {
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(savedSSID.c_str(), savedPassword.c_str());
+    
+    Serial.print("📶 Connecting to WiFi: ");
+    Serial.println(savedSSID);
+    
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 30) {
+        delay(500);
+        Serial.print(".");
+        attempts++;
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("\n✅ WiFi Connected!");
+        Serial.print("📡 IP Address: ");
+        Serial.println(WiFi.localIP());
+        addLog("Connected to: " + savedSSID);
+        addLog("IP: " + WiFi.localIP().toString());
+    } else {
+        Serial.println("\n❌ WiFi Connection Failed!");
+        addLog("WiFi connection failed");
+    }
+}
+
+void scanWiFi() {
+    Serial.println("📡 Scanning for WiFi networks...");
+    wifiCount = WiFi.scanNetworks();
+    
+    if (wifiCount == 0) {
+        Serial.println("❌ No networks found");
+    } else {
+        Serial.print("✅ Found ");
+        Serial.print(wifiCount);
+        Serial.println(" networks:");
+        
+        for (int i = 0; i < wifiCount && i < 20; i++) {
+            availableWifi[i] = WiFi.SSID(i);
+            Serial.print("  ");
+            Serial.print(i + 1);
+            Serial.print(": ");
+            Serial.println(availableWifi[i]);
+        }
+    }
+}
+
+void connectToWiFi(String ssid, String password) {
+    WiFi.begin(ssid.c_str(), password.c_str());
+    
+    Serial.print("🔗 Connecting to: ");
+    Serial.println(ssid);
+    
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 30) {
+        delay(500);
+        Serial.print(".");
+        attempts++;
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("\n✅ Connected successfully!");
+        saveWiFiCreds(ssid, password);
+        wifiConfigured = true;
+        addLog("Connected to WiFi: " + ssid);
+    } else {
+        Serial.println("\n❌ Connection failed!");
+        addLog("Failed to connect: " + ssid);
+    }
+}
+
+void saveWiFiCreds(String ssid, String password) {
+    // Clear EEPROM first
+    for (int i = 0; i < 64; i++) {
+        EEPROM.write(SSID_ADDR + i, 0);
+        EEPROM.write(PASS_ADDR + i, 0);
+    }
+    
+    // Save SSID
+    for (int i = 0; i < ssid.length() && i < 32; i++) {
+        EEPROM.write(SSID_ADDR + i, ssid[i]);
+    }
+    EEPROM.write(SSID_ADDR + ssid.length(), '\0');
+    
+    // Save Password
+    for (int i = 0; i < password.length() && i < 32; i++) {
+        EEPROM.write(PASS_ADDR + i, password[i]);
+    }
+    EEPROM.write(PASS_ADDR + password.length(), '\0');
+    
+    EEPROM.commit();
+    Serial.println("💾 WiFi credentials saved to EEPROM");
+}
+
+void loadWiFiCreds() {
+    String ssid = "";
+    String password = "";
+    
+    // Load SSID
+    for (int i = 0; i < 32; i++) {
+        char c = EEPROM.read(SSID_ADDR + i);
+        if (c == '\0') break;
+        if (c > 0) ssid += c;
+    }
+    
+    // Load Password
+    for (int i = 0; i < 32; i++) {
+        char c = EEPROM.read(PASS_ADDR + i);
+        if (c == '\0') break;
+        if (c > 0) password += c;
+    }
+    
+    if (ssid.length() > 0) {
+        savedSSID = ssid;
+        savedPassword = password;
+        wifiConfigured = true;
+        Serial.println("📖 Loaded WiFi credentials from EEPROM");
+        Serial.print("SSID: ");
+        Serial.println(savedSSID);
+    } else {
+        Serial.println("📭 No saved WiFi credentials found");
+    }
+}
+
+// ========== WEB SERVER HANDLERS ==========
+void setupWebServer() {
+    server.on("/", HTTP_GET, handleRoot);
+    server.on("/wifi-config", HTTP_GET, handleWiFiConfig);
+    server.on("/wifi-scan", HTTP_GET, handleWiFiScan);
+    server.on("/wifi-connect", HTTP_POST, handleWiFiConnect);
+    server.on("/getData", HTTP_GET, handleGetData);
+    server.on("/controlPump", HTTP_GET, handleControlPump);
+    server.on("/setMode", HTTP_GET, handleSetMode);
+    server.on("/setSpeed", HTTP_GET, handleSetSpeed);
+    server.onNotFound([]() {
+        server.send(404, "text/plain", "404: Not Found");
+    });
+    
+    server.begin();
+    Serial.println("🌐 Web server started on port 80");
+}
+
+void handleRoot() {
+    String html = String(htmlContent);
+    
+    // Replace placeholders with actual values
+    if (WiFi.status() == WL_CONNECTED) {
+        html.replace("%WIFI_STATUS%", "Đã kết nối - " + WiFi.SSID());
+        html.replace("%WIFI_MODE%", "STA");
+    } else {
+        html.replace("%WIFI_STATUS%", "Chưa kết nối");
+        html.replace("%WIFI_MODE%", "AP");
+    }
+    
+    server.send(200, "text/html", html);
+}
+
+void handleWiFiConfig() {
+    String html = String(wifiConfigHTML);
+    
+    // Replace ESP_IP placeholder
+    if (WiFi.status() == WL_CONNECTED) {
+        html.replace("%ESP_IP%", WiFi.localIP().toString());
+    } else {
+        html.replace("%ESP_IP%", WiFi.softAPIP().toString());
+    }
+    
+    html.replace("{{WIFI_LIST}}", getWiFiListHTML());
+    server.send(200, "text/html", html);
+}
+
+void handleWiFiScan() {
+    scanWiFi();
+    String json = "[";
+    for (int i = 0; i < wifiCount && i < 20; i++) {
+        if (i > 0) json += ",";
+        json += "\"" + availableWifi[i] + "\"";
+    }
+    json += "]";
+    server.send(200, "application/json", json);
+}
+
+void handleWiFiConnect() {
+    if (server.hasArg("ssid") && server.hasArg("password")) {
+        String ssid = server.arg("ssid");
+        String password = server.arg("password");
+        
+        connectToWiFi(ssid, password);
+        
+        if (WiFi.status() == WL_CONNECTED) {
+            server.send(200, "application/json", "{\"status\":\"success\",\"ip\":\"" + WiFi.localIP().toString() + "\"}");
+        } else {
+            server.send(200, "application/json", "{\"status\":\"failed\"}");
+        }
+    } else {
+        server.send(400, "text/plain", "Missing parameters");
+    }
+}
+
+void handleGetData() {
+    StaticJsonDocument<200> doc;
+    doc["soil"] = soilMoisture;
+    doc["rain"] = rainStatus;
+    doc["pump"] = pumpStatus;
+    doc["autoMode"] = autoMode;
+    doc["speed"] = pumpSpeed;
+    
+    String json;
+    serializeJson(doc, json);
+    server.send(200, "application/json", json);
+}
+
+void handleControlPump() {
+    if (server.hasArg("state")) {
+        String state = server.arg("state");
+        if (state == "on") {
+            UnoSerial.println("PUMP_ON");
+            pumpStatus = true;
+            addLog("Manual: Pump ON");
+        } else {
+            UnoSerial.println("PUMP_OFF");
+            pumpStatus = false;
+            addLog("Manual: Pump OFF");
+        }
+        server.send(200, "text/plain", "OK");
+    } else {
+        server.send(400, "text/plain", "Missing state parameter");
+    }
+}
+
+void handleSetMode() {
+    if (server.hasArg("mode")) {
+        autoMode = (server.arg("mode") == "auto");
+        addLog("Mode: " + String(autoMode ? "Auto" : "Manual"));
+        server.send(200, "text/plain", "OK");
+    } else {
+        server.send(400, "text/plain", "Missing mode parameter");
+    }
+}
+
+void handleSetSpeed() {
+    if (server.hasArg("speed")) {
+        pumpSpeed = server.arg("speed").toInt();
+        server.send(200, "text/plain", "OK");
+    } else {
+        server.send(400, "text/plain", "Missing speed parameter");
+    }
+}
+
+// ========== MQTT FUNCTIONS ==========
+void setupMQTT() {
+    mqttClient.setServer(mqttServer, mqttPort);
+    mqttClient.setCallback(mqttCallback);
+    Serial.println("📡 MQTT client configured");
+}
+
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+    String message;
+    for (unsigned int i = 0; i < length; i++) {
+        message += (char)payload[i];
+    }
+    
+    String topicStr = String(topic);
+    
+    if (topicStr.endsWith("/v" + String(VIRTUAL_PIN_PUMP))) {
+        if (message == "1") {
+            UnoSerial.println("PUMP_ON");
+            pumpStatus = true;
+            addLog("MQTT: Pump ON");
+        } else {
+            UnoSerial.println("PUMP_OFF");
+            pumpStatus = false;
+            addLog("MQTT: Pump OFF");
+        }
+    } else if (topicStr.endsWith("/v" + String(VIRTUAL_PIN_MODE))) {
+        autoMode = (message == "1");
+        addLog("MQTT: Mode " + String(autoMode ? "Auto" : "Manual"));
+    } else if (topicStr.endsWith("/v" + String(VIRTUAL_PIN_SPEED))) {
+        pumpSpeed = message.toInt();
+        addLog("MQTT: Speed " + String(pumpSpeed) + "%");
+    }
+}
+
+void reconnectMQTT() {
+    if (!mqttClient.connected()) {
+        Serial.print("🔗 Connecting to MQTT...");
+        
+        if (mqttClient.connect("ESP32Client", BLYNK_AUTH_TOKEN, "")) {
+            Serial.println("✅ MQTT connected");
+            
+            String topicPump = String(BLYNK_AUTH_TOKEN) + "/v" + String(VIRTUAL_PIN_PUMP);
+            mqttClient.subscribe(topicPump.c_str());
+            
+            String topicMode = String(BLYNK_AUTH_TOKEN) + "/v" + String(VIRTUAL_PIN_MODE);
+            mqttClient.subscribe(topicMode.c_str());
+            
+            String topicSpeed = String(BLYNK_AUTH_TOKEN) + "/v" + String(VIRTUAL_PIN_SPEED);
+            mqttClient.subscribe(topicSpeed.c_str());
+            
+            addLog("MQTT connected & subscribed");
+        } else {
+            Serial.print("❌ MQTT failed, rc=");
+            Serial.println(mqttClient.state());
+        }
+    }
+}
+
+void publishData() {
+    if (!mqttClient.connected()) return;
+    
+    mqttClient.publish((String(BLYNK_AUTH_TOKEN) + "/v" + String(VIRTUAL_PIN_SOIL)).c_str(), 
+                       String(soilMoisture).c_str());
+    mqttClient.publish((String(BLYNK_AUTH_TOKEN) + "/v" + String(VIRTUAL_PIN_RAIN)).c_str(), 
+                       String(rainStatus).c_str());
+    mqttClient.publish((String(BLYNK_AUTH_TOKEN) + "/v" + String(VIRTUAL_PIN_STATE)).c_str(), 
+                       String(pumpStatus).c_str());
+}
+
+// ========== HELPER FUNCTIONS ==========
+void addLog(String message) {
+    time_t now = time(nullptr);
+    struct tm timeinfo;
+    
+    if (localtime_r(&now, &timeinfo)) {
+        char timeStr[20];
+        strftime(timeStr, sizeof(timeStr), "%H:%M:%S", &timeinfo);
+        eventLog = "[" + String(timeStr) + "] " + message + "<br>" + eventLog;
+    } else {
+        eventLog = "[--:--:--] " + message + "<br>" + eventLog;
+    }
+    
+    if (eventLog.length() > 3000) {
+        int lastIndex = eventLog.lastIndexOf("<br>", 2000);
+        if (lastIndex != -1) {
+            eventLog = eventLog.substring(0, lastIndex);
+        }
+    }
+    
+    Serial.println("📝 " + message);
+}
+
+void readUARTData() {
+    while (UnoSerial.available()) {
+        String data = UnoSerial.readStringUntil('\n');
+        data.trim();
+        
+        if (data.startsWith("{")) {
+            StaticJsonDocument<256> doc;
+            DeserializationError error = deserializeJson(doc, data);
+            
+            if (!error) {
+                if (doc.containsKey("soil_moisture")) {
+                    soilMoisture = doc["soil_moisture"];
+                }
+                if (doc.containsKey("rain")) {
+                    rainStatus = doc["rain"];
+                }
+                if (doc.containsKey("pump_status")) {
+                    pumpStatus = doc["pump_status"];
+                }
+            }
+        } else if (data == "PUMP_ON_ACK") {
+            pumpStatus = true;
+            addLog("Pump ON acknowledged");
+        } else if (data == "PUMP_OFF_ACK") {
+            pumpStatus = false;
+            addLog("Pump OFF acknowledged");
+        }
+    }
+}
+
+int getCurrentHour() {
+    time_t now = time(nullptr);
+    struct tm timeinfo;
+    
+    if (localtime_r(&now, &timeinfo)) {
+        return timeinfo.tm_hour;
+    }
+    return -1;
+}
+
+void checkAutoWatering() {
+    static unsigned long lastCheck = 0;
+    if (millis() - lastCheck < 30000) return;
+    lastCheck = millis();
+    
+    int currentHour = getCurrentHour();
+    
+    if (currentHour == -1) return;
+    
+    // Auto watering logic
+    if ((currentHour == 6 || currentHour == 17) && rainStatus == 0 && soilMoisture < 40) {
+        if (!pumpStatus) {
+            UnoSerial.println("PUMP_ON");
+            pumpStatus = true;
+            addLog("Auto: Pump ON (Hour: " + String(currentHour) + ", Soil: " + String(soilMoisture) + "%)");
+        }
+    } else {
+        if (pumpStatus) {
+            UnoSerial.println("PUMP_OFF");
+            pumpStatus = false;
+            addLog("Auto: Pump OFF");
+        }
+    }
+}
+
+String getWiFiListHTML() {
+    String html = "";
+    for (int i = 0; i < wifiCount && i < 20; i++) {
+        html += "<option value=\"" + availableWifi[i] + "\">" + availableWifi[i] + "</option>";
+    }
+    return html;
+}
+
+// ========== HTML CONTENTS (DEFINE HERE) ==========
+const char* wifiConfigHTML = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi Configuration</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        select, input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border 0.3s;
+        }
+        select:focus, input:focus {
+            border-color: #667eea;
+            outline: none;
+        }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.3s;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        .btn-secondary {
+            background: #6c757d;
+            margin-top: 10px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            text-align: center;
+            font-weight: bold;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 WiFi Configuration</h1>
+        
+        <div class="form-group">
+            <label for="wifiSelect">Select WiFi Network:</label>
+            <select id="wifiSelect">
+                <option value="">-- Select Network --</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="ssid">Or Enter SSID:</label>
+            <input type="text" id="ssid" placeholder="WiFi SSID">
+        </div>
+        
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" placeholder="WiFi Password">
+        </div>
+        
+        <div id="status"></div>
+        
+        <button class="btn" onclick="connectWiFi()">🔗 Connect to WiFi</button>
+        <button class="btn btn-secondary" onclick="scanWiFi()">🔍 Scan Networks</button>
+        <button class="btn btn-secondary" onclick="goToMain()">🏠 Back to Main</button>
+        
+        <div style="margin-top: 20px; text-align: center;">
+            <small>Current IP: %ESP_IP%</small><br>
+            <small>AP SSID: SmartIrrigation_AP</small><br>
+            <small>AP Password: 12345678</small>
+        </div>
+    </div>
+    
+    <script>
+        function scanWiFi() {
+            fetch('/wifi-scan')
+                .then(response => response.json())
+                .then(networks => {
+                    const select = document.getElementById('wifiSelect');
+                    select.innerHTML = '<option value="">-- Select Network --</option>';
+                    networks.forEach(network => {
+                        const option = document.createElement('option');
+                        option.value = network;
+                        option.textContent = network;
+                        select.appendChild(option);
+                    });
+                    showStatus('Found ' + networks.length + ' networks', 'success');
+                })
+                .catch(error => {
+                    showStatus('Scan failed: ' + error, 'error');
+                });
+        }
+        
+        function connectWiFi() {
+            const ssid = document.getElementById('ssid').value || 
+                        document.getElementById('wifiSelect').value;
+            const password = document.getElementById('password').value;
+            
+            if (!ssid || !password) {
+                showStatus('Please enter SSID and password', 'error');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('ssid', ssid);
+            formData.append('password', password);
+            
+            showStatus('Connecting...', 'success');
+            
+            fetch('/wifi-connect', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showStatus('Connected! IP: ' + data.ip, 'success');
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 3000);
+                } else {
+                    showStatus('Connection failed', 'error');
+                }
+            })
+            .catch(error => {
+                showStatus('Error: ' + error, 'error');
+            });
+        }
+        
+        function goToMain() {
+            window.location.href = '/';
+        }
+        
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = 'status ' + type;
+        }
+        
+        // Auto scan on load
+        window.onload = scanWiFi;
+    </script>
+</body>
+</html>
+)rawliteral";
+
+// Main HTML interface (giữ nguyên từ code cũ nhưng thêm nút WiFi Config)
 const char* htmlContent = R"rawliteral(
 <!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hệ Thống Tưới Cây Tự Động</title>
+    <title>Hệ Thống Tưới Cây Thông Minh</title>
     <style>
+        /* Giữ nguyên toàn bộ CSS từ code cũ */
         :root {
             --primary: #667eea;
             --secondary: #764ba2;
@@ -334,15 +1047,23 @@ const char* htmlContent = R"rawliteral(
 <body>
     <div class="container">
         <div class="header">
-            <h1>🌿 HỆ THỐNG TƯỚI CÂY TỰ ĐỘNG</h1>
-            <div class="wifi-status">
-                📶 Đã kết nối WiFi | Chế độ: Station
+            <h1>🌿 HỆ THỐNG TƯỚI CÂY THÔNG MINH</h1>
+            <div class="wifi-status" id="wifiStatus">
+                📶 WiFi: %WIFI_STATUS% | Mode: %WIFI_MODE%
             </div>
             <div class="current-time" id="currentTime">--:--:--</div>
+            <div style="margin-top: 15px;">
+                <button class="btn btn-primary" onclick="location.href='/wifi-config'">
+                    🔧 Cấu Hình WiFi
+                </button>
+                <button class="btn btn-primary" onclick="location.href='/'">
+                    🏠 Trang Chính
+                </button>
+            </div>
         </div>
         
         <div class="grid">
-            <!-- Sensor Data -->
+            <!-- Sensor Data Cards (giữ nguyên) -->
             <div class="card">
                 <div class="card-title">
                     <i>💧</i>
@@ -509,6 +1230,10 @@ const char* htmlContent = R"rawliteral(
             document.getElementById('pumpStatusBadge').textContent = data.pump ? 'ON' : 'OFF';
             document.getElementById('pumpStatusBadge').className = data.pump ? 'status-badge status-on' : 'status-badge status-off';
             
+            // Update mode toggle
+            document.getElementById('modeToggle').checked = !data.autoMode;
+            toggleMode(); // Update UI
+            
             const soilStatus = document.getElementById('soilStatus');
             if (data.soil < 30) {
                 soilStatus.textContent = 'RẤT KHÔ';
@@ -571,224 +1296,3 @@ const char* htmlContent = R"rawliteral(
 </body>
 </html>
 )rawliteral";
-
-void setup() {
-    Serial.begin(9600);
-    UnoSerial.begin(9600, SERIAL_8N1, RXD2, TXD2);
-    
-    Serial.println("🚀 Starting ESP32 Garden System...");
-    
-    // Connect to WiFi
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
-    Serial.print("📶 Connecting to WiFi");
-    int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-        delay(1000);
-        Serial.print(".");
-        attempts++;
-    }
-    
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("\n✅ Connected! IP: " + WiFi.localIP().toString());
-    } else {
-        Serial.println("\n❌ Failed to connect to WiFi");
-    }
-    
-    // Initialize NTP
-    configTzTime(TZ_INFO, ntpServer);
-    Serial.println("⏰ NTP time configured");
-    
-    // Setup web server routes với debug chi tiết
-    server.on("/", HTTP_GET, []() {
-        Serial.println("🌐 GET / - Serving HTML interface");
-        server.send(200, "text/html", htmlContent);
-    });
-    
-    server.on("/getData", HTTP_GET, []() {
-        Serial.println("📊 GET /getData - Sending sensor data");
-        String json = "{\"soil\":" + String(soilMoisture) + 
-                     ",\"rain\":" + String(rainStatus) + 
-                     ",\"pump\":" + String(pumpStatus) + "}";
-        server.send(200, "application/json", json);
-    });
-    
-    server.on("/controlPump", HTTP_GET, []() {
-        Serial.println("🎛️ GET /controlPump");
-        if (server.hasArg("state")) {
-            String state = server.arg("state");
-            Serial.println("💧 Pump control received: " + state);
-            if (state == "on") {
-                UnoSerial.println("PUMP_ON");
-                addLog("Manual: Bật máy bơm");
-                Serial.println("🔴 Sending PUMP_ON to Arduino");
-            } else {
-                UnoSerial.println("PUMP_OFF");
-                addLog("Manual: Tắt máy bơm");
-                Serial.println("🟢 Sending PUMP_OFF to Arduino");
-            }
-            server.send(200, "text/plain", "OK");
-        } else {
-            server.send(400, "text/plain", "Missing state parameter");
-        }
-    });
-    
-    server.on("/setMode", HTTP_GET, []() {
-        Serial.println("🔄 GET /setMode");
-        if (server.hasArg("mode")) {
-            String mode = server.arg("mode");
-            autoMode = (mode == "auto");
-            Serial.println("📝 Mode set to: " + String(autoMode ? "AUTO" : "MANUAL"));
-            addLog("Chế độ: " + String(autoMode ? "Tự động" : "Thủ công"));
-            server.send(200, "text/plain", "OK");
-        } else {
-            server.send(400, "text/plain", "Missing mode parameter");
-        }
-    });
-    
-    server.on("/setSpeed", HTTP_GET, []() {
-        Serial.println("🎚️ GET /setSpeed");
-        if (server.hasArg("speed")) {
-            pumpSpeed = server.arg("speed").toInt();
-            Serial.println("📊 Pump speed set to: " + String(pumpSpeed) + "%");
-            server.send(200, "text/plain", "OK");
-        } else {
-            server.send(400, "text/plain", "Missing speed parameter");
-        }
-    });
-    
-    // Handle 404 errors
-    server.onNotFound([]() {
-        Serial.println("❌ 404 - Path not found: " + server.uri());
-        server.send(404, "text/plain", "Path not found");
-    });
-    
-    server.begin();
-    Serial.println("✅ Web server started on port 80");
-    addLog("Web server khởi động thành công");
-    addLog("IP: " + WiFi.localIP().toString());
-}
-
-void loop() {
-    server.handleClient();
-    readUARTData();
-    
-    if (autoMode) {
-        checkAutoWatering();
-    }
-    
-    delay(100);
-}
-
-// ========== ĐỊNH NGHĨA CÁC HÀM ==========
-
-void addLog(String message) {
-    time_t now = time(nullptr);
-    struct tm timeinfo;
-    
-    if (localtime_r(&now, &timeinfo)) {
-        char timeStr[20];
-        strftime(timeStr, sizeof(timeStr), "%H:%M:%S", &timeinfo);
-        eventLog = "[" + String(timeStr) + "] " + message + "<br>" + eventLog;
-    } else {
-        eventLog = "[--:--:--] " + message + "<br>" + eventLog;
-    }
-    
-    // Giới hạn độ dài log
-    if (eventLog.length() > 3000) {
-        int lastIndex = eventLog.lastIndexOf("<br>", 2000);
-        if (lastIndex != -1) {
-            eventLog = eventLog.substring(0, lastIndex);
-        }
-    }
-    
-    Serial.println("📝 LOG: " + message);
-}
-
-void readUARTData() {
-    while (UnoSerial.available()) {
-        String data = UnoSerial.readStringUntil('\n');
-        data.trim();
-        
-        if (data.length() > 0) {
-            Serial.println("📨 UART Received: " + data);
-        }
-        
-        if (data.startsWith("{")) {
-            // JSON data from Arduino
-            StaticJsonDocument<256> doc;
-            DeserializationError error = deserializeJson(doc, data);
-            
-            if (!error) {
-                int newSoil = doc["soil_moisture"];
-                int newRain = doc["rain"];
-                bool newPump = doc["pump_status"];
-                
-                // Only update if values changed
-                if (newSoil != soilMoisture || newRain != rainStatus || newPump != pumpStatus) {
-                    soilMoisture = newSoil;
-                    rainStatus = newRain;
-                    pumpStatus = newPump;
-                    
-                    Serial.println("📊 Data updated - Soil: " + String(soilMoisture) + 
-                                 "%, Rain: " + String(rainStatus) + 
-                                 ", Pump: " + String(pumpStatus));
-                }
-            } else {
-                Serial.println("❌ JSON Parse Error: " + String(error.c_str()));
-            }
-        } else if (data == "PUMP_ON_ACK") {
-            pumpStatus = true;
-            addLog("Máy bơm đã BẬT");
-            Serial.println("🔴 Pump ON acknowledged");
-        } else if (data == "PUMP_OFF_ACK") {
-            pumpStatus = false;
-            addLog("Máy bơm đã TẮT");
-            Serial.println("🟢 Pump OFF acknowledged");
-        } else if (data.length() > 0) {
-            Serial.println("📨 UART Message: " + data);
-        }
-    }
-}
-
-int getCurrentHour() {
-    time_t now = time(nullptr);
-    struct tm timeinfo;
-    
-    if (localtime_r(&now, &timeinfo)) {
-        return timeinfo.tm_hour;
-    }
-    return -1; // Return -1 if time is not available
-}
-
-void checkAutoWatering() {
-    static unsigned long lastCheck = 0;
-    if (millis() - lastCheck < 30000) return; // Check every 30 seconds
-    lastCheck = millis();
-    
-    int currentHour = getCurrentHour();
-    
-    if (currentHour == -1) {
-        Serial.println("⏰ Cannot get current time, skipping auto check");
-        return;
-    }
-    
-    Serial.println("🤖 Auto check - Hour: " + String(currentHour) + 
-                  ", Rain: " + String(rainStatus) + 
-                  ", Soil: " + String(soilMoisture) + "%");
-    
-    // Auto watering logic: 6h or 17h, no rain, soil dry
-    if ((currentHour == 6 || currentHour == 17) && rainStatus == 0 && soilMoisture < 40) {
-        if (!pumpStatus) {
-            UnoSerial.println("PUMP_ON");
-            addLog("Auto: Bật bơm (Thời gian: " + String(currentHour) + 
-                  "h, Độ ẩm: " + String(soilMoisture) + "%)");
-            Serial.println("🤖 Auto: Starting pump");
-        }
-    } else {
-        if (pumpStatus) {
-            UnoSerial.println("PUMP_OFF");
-            addLog("Auto: Tắt bơm (Điều kiện không thỏa mãn)");
-            Serial.println("🤖 Auto: Stopping pump");
-        }
-    }
-}
