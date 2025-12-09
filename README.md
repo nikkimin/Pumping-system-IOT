@@ -46,3 +46,6 @@ Uno: đọc cảm biến, điều khiển relay, gửi dữ liệu JSON.
 ESP32: nhận dữ liệu, xử lý Auto/Manual, đồng bộ Blynk, hiển thị đồng hồ.		
 HTML: Tạo trang web điều khiển hệ thống		
 UART JSON: giao tiếp hai chiều, dễ debug và mở rộng.		
+
+
+upload: double click file upload_all.bat

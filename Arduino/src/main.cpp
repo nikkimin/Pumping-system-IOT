@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <ArduinoJson.h>
 #include <SoftwareSerial.h>  // Thêm thư viện SoftwareSerial
 

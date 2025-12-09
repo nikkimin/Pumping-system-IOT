@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống Tưới Cây Thông Minh</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌿 HỆ THỐNG TƯỚI CÂY THÔNG MINH</h1>
+            <div class="wifi-status" id="wifiStatus">
+                📶 WiFi: Đang tải... | Mode: --
+            </div>
+            <div class="current-time" id="currentTime">--:--:--</div>
+            <div style="margin-top: 15px;">
+                <button class="btn btn-primary" onclick="location.href='/wifi-config'">
+                    🔧 Cấu Hình WiFi
+                </button>
+                <button class="btn btn-primary" onclick="resetSetup()">
+                    🔄 Reset Setup
+                </button>
+                <button class="btn btn-primary" onclick="location.href='/'">
+                    🏠 Trang Chính
+                </button>
+            </div>
+        </div>
+        
+        <div class="grid">
+            <!-- Sensor Data Cards -->
+            <div class="card">
+                <div class="card-title">
+                    <i>💧</i>
+                    ĐỘ ẨM ĐẤT
+                </div>
+                <div class="sensor-value" id="soilMoisture">0%</div>
+                <div class="status-badge" id="soilStatus">Đang cập nhật...</div>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">
+                    <i>🌧️</i>
+                    TRẠNG THÁI MƯA
+                </div>
+                <div class="sensor-value" id="rainStatus">--</div>
+                <div class="status-badge" id="rainStatusText">Đang cập nhật...</div>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">
+                    <i>🚰</i>
+                    MÁY BƠM
+                </div>
+                <div class="sensor-value" id="pumpStatus">TẮT</div>
+                <div class="status-badge status-off" id="pumpStatusBadge">OFF</div>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">
+                    <i>⚙️</i>
+                    CHẾ ĐỘ HOẠT ĐỘNG
+                </div>
+                <div class="control-group">
+                    <div class="slider-container">
+                        <span>Tự động</span>
+                        <label class="switch">
+                            <input type="checkbox" id="modeToggle">
+                            <span class="slider"></span>
+                        </label>
+                        <span>Thủ công</span>
+                    </div>
+                    <div class="status-badge status-auto" id="modeStatus">CHẾ ĐỘ TỰ ĐỘNG</div>
+                </div>
+                
+                <div id="manualControls" style="display: none;">
+                    <div class="card-title">
+                        <i>🎚️</i>
+                        ĐIỀU KHIỂN THỦ CÔNG
+                    </div>
+                    <div class="slider-container">
+                        <span>Tốc độ:</span>
+                        <input type="range" min="0" max="100" value="50" id="pumpSpeedSlider">
+                        <span class="slider-value" id="pumpSpeedValue">50%</span>
+                    </div>
+                    <button class="btn btn-primary" id="btnPumpOn">
+                        ▶️ BẬT BƠM
+                    </button>
+                    <button class="btn btn-primary" id="btnPumpOff">
+                        ⏹️ TẮT BƠM
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Event Log -->
+        <div class="card">
+            <div class="card-title">
+                <i>📋</i>
+                NHẬT KÝ SỰ KIỆN
+            </div>
+            <div class="log-container" id="eventLog">
+                <div class="log-entry">[Hệ thống] Đang khởi động...</div>
+            </div>
+            <button class="btn btn-primary" id="btnClearLog">
+                🗑️ XÓA NHẬT KÝ
+            </button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+    <script src="/script.js"></script>
+</body>
+</html>

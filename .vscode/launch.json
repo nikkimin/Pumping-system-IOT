@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": true,
-      "cwd": "d:/Pumping-system-IOT",
-      "program": "d:/Pumping-system-IOT/build/Debug/outDebug",
+      "cwd": "d:/Pumping-system-IOT/Esp/src",
+      "program": "d:/Pumping-system-IOT/Esp/src/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [
