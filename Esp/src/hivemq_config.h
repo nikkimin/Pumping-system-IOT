@@ -13,12 +13,12 @@ const char* HIVEMQ_WS_PATH = "/mqtt";  // WebSocket path (KHÔNG đổi)
 
 // MQTT Credentials (tạo trong HiveMQ Console -> Access Management)
 const char* MQTT_USERNAME = "pumpuser";      // Username mới (viết thường, không dấu)
-const char* MQTT_PASSWORD = "pump123456";    // Password mới (đơn giản, dễ nhớ)
+const char* MQTT_PASSWORD = "pump123456A";    // Password mới (đơn giản, dễ nhớ)
 
 // Client ID (unique cho mỗi ESP32 device)
 // ⚠️ QUAN TRỌNG: Nếu có nhiều ESP32, thay đổi số cuối: _001, _002, _003...
 // Web interface sẽ tự động tạo Client ID riêng (WebClient_xxxxx)
-const char* MQTT_CLIENT_ID = "ESP32_SmartIrrigation_001";
+const char* MQTT_CLIENT_ID = "ESP32_SmartIrrigation_003";
 
 // ========== MQTT TOPICS ==========
 // Publish Topics (ESP32 gửi dữ liệu lên cloud)
@@ -45,5 +45,17 @@ const char* TOPIC_CONFIG = "smartirrigation/config/update";         // Cập nh�
 
 // ========== DEBUG MODE ==========
 #define MQTT_DEBUG 1  // 1 = Bật debug, 0 = Tắt debug
+
+// ========== CERTIFICATE VALIDATION ==========
+// ⚠️ CHỈ DÙNG ĐỂ DEBUG - BẬT CHẾ ĐỘ INSECURE
+// Set = 1 để bỏ qua certificate validation (KHÔNG AN TOÀN, chỉ để test)
+// Set = 0 để dùng certificate validation đầy đủ (RECOMMENDED)
+#define INSECURE_MODE 0  // 0 = Secure (validate cert), 1 = Insecure (bypass cert)
+
+// ========== NTP SERVERS ==========
+// Multiple NTP servers for better time sync reliability
+const char* NTP_SERVER_PRIMARY = "pool.ntp.org";
+const char* NTP_SERVER_SECONDARY = "time.google.com";
+const char* NTP_SERVER_TERTIARY = "time.cloudflare.com";
 
 #endif

@@ -11,6 +11,11 @@
 // HiveMQ Cloud Configuration
 #include "hivemq_config.h"
 #include "hivemq_cert.h"
+#include "mqtt_debug.h"  // MQTT Debug Tool
+
+// ========== DEBUG MODE ==========
+// Uncomment dòng sau để bật debug tự động khi khởi động
+// #define DEBUG_MQTT_ON_STARTUP
 
 
 
@@ -164,6 +169,26 @@ void setup() {
 
 // ========== MAIN LOOP ==========
 void loop() {
+    // Serial command để debug MQTT
+    if (Serial.available()) {
+        String cmd = Serial.readStringUntil('\n');
+        cmd.trim();
+        cmd.toLowerCase();
+        
+        if (cmd == "debug" || cmd == "mqtt" || cmd == "test") {
+            Serial.println("\n╔════════════════════════════════════════╗");
+            Serial.println("║  🔍 MQTT DEBUG REQUESTED               ║");
+            Serial.println("╚════════════════════════════════════════╝");
+            delay(1000);
+            MQTTDebugger::debugMQTTConnection(espClient, mqttClient);
+        }
+        else if (cmd == "help") {
+            Serial.println("\n📋 Available Commands:");
+            Serial.println("   debug / mqtt / test  → Run MQTT diagnostic");
+            Serial.println("   help                 → Show this help\n");
+        }
+    }
+    
     server.handleClient();
     readUARTData();
 
@@ -607,9 +632,20 @@ void reconnectMQTT() {
                 case 5:
                     Serial.println("   → MQTT_CONNECT_UNAUTHORIZED - Not authorized");
                     Serial.println("   → Check HiveMQ Cloud Access Management");
+                    Serial.println("   → QUICK FIX: Disconnect duplicate Client ID in HiveMQ Console");
+                    Serial.printf("   → Or change Client ID in hivemq_config.h: %s\n", MQTT_CLIENT_ID);
                     break;
                 default:
                     Serial.printf("   → Unknown error code: %d\n", state);
+            }
+            
+            // 🔍 AUTO DEBUG: Chạy debug tool sau 3 lần thất bại
+            if (reconnectAttempts == 3) {
+                Serial.println("\n⚠️  Multiple connection failures detected!");
+                Serial.println("🔍 Running MQTT Diagnostic Tool...\n");
+                delay(1000);
+                MQTTDebugger::debugMQTTConnection(espClient, mqttClient);
+                Serial.println("\n💡 TIP: Type 'debug' in Serial Monitor to run diagnostic again anytime\n");
             }
             
             // Exponential backoff: 5s, 10s, 20s, 30s (max)

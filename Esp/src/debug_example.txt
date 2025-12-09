@@ -1,0 +1,170 @@
+/**
+ * ========================================
+ * MQTT DEBUG TOOL - Hướng dẫn sử dụng
+ * ========================================
+ * 
+ * File này chứa hướng dẫn cách sử dụng MQTT Debug Tool
+ * để tìm và fix lỗi MQTT_CONNECT_UNAUTHORIZED (rc=5)
+ */
+
+/*
+ * CÁCH 1: Debug trong void setup()
+ * ================================
+ * Thêm code sau vào hàm setup() trong main.cpp:
+ */
+
+// Trong main.cpp, thêm include ở đầu file:
+#include "mqtt_debug.h"
+
+// Trong hàm setup(), sau khi setupMQTT(), thêm:
+void setup() {
+    // ... code hiện tại ...
+    
+    // Setup MQTT
+    setupMQTT();
+    
+    // 🔍 DEBUG: Chạy debug tool một lần khi khởi động
+    #ifdef DEBUG_MQTT_ON_STARTUP
+    Serial.println("\n🛠️  Running MQTT Debug Tool...");
+    delay(2000);  // Đợi 2 giây để dễ đọc
+    MQTTDebugger::debugMQTTConnection(espClient, mqttClient);
+    #endif
+    
+    Serial.println("✅ System initialized successfully");
+}
+
+/*
+ * CÁCH 2: Debug thủ công qua Serial Command
+ * ==========================================
+ * Thêm command để chạy debug bất kỳ lúc nào:
+ */
+
+void loop() {
+    server.handleClient();
+    readUARTData();
+    
+    // Thêm Serial command để debug
+    if (Serial.available()) {
+        String cmd = Serial.readStringUntil('\n');
+        cmd.trim();
+        
+        if (cmd == "debug" || cmd == "DEBUG") {
+            Serial.println("\n🔍 Running MQTT Debug Tool...");
+            MQTTDebugger::debugMQTTConnection(espClient, mqttClient);
+        }
+    }
+    
+    // ... phần code còn lại ...
+}
+
+/*
+ * CÁCH 3: Tự động debug khi reconnect thất bại
+ * =============================================
+ * Modify hàm reconnectMQTT() để tự động chạy debug sau N lần thất bại:
+ */
+
+void reconnectMQTT() {
+    static unsigned long lastAttempt = 0;
+    static int reconnectAttempts = 0;
+    static unsigned long reconnectDelay = MQTT_RECONNECT_DELAY;
+    
+    if (millis() - lastAttempt < reconnectDelay) {
+        return;
+    }
+    
+    lastAttempt = millis();
+    
+    if (!mqttClient.connected()) {
+        reconnectAttempts++;
+        Serial.printf("🔄 MQTT reconnect attempt #%d...\n", reconnectAttempts);
+        
+        if (mqttClient.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD)) {
+            Serial.println("✅ MQTT Connected!");
+            reconnectAttempts = 0;
+            // ... code subscribe ...
+        } else {
+            int state = mqttClient.state();
+            Serial.printf("❌ MQTT Connection failed, rc=%d\n", state);
+            
+            // 🔍 AUTO DEBUG: Chạy debug tool sau 3 lần thất bại
+            if (reconnectAttempts == 3) {
+                Serial.println("\n⚠️  Multiple failures detected. Running diagnostic...\n");
+                delay(1000);
+                MQTTDebugger::debugMQTTConnection(espClient, mqttClient);
+            }
+            
+            reconnectDelay = min(reconnectDelay * 2, 30000UL);
+        }
+    }
+}
+
+/*
+ * ========================================
+ * HƯỚNG DẪN SỬ DỤNG CHI TIẾT
+ * ========================================
+ * 
+ * BƯỚC 1: Thêm #include vào main.cpp
+ * -----------------------------------
+ * Thêm dòng sau vào đầu file main.cpp (sau các include khác):
+ * 
+ *     #include "mqtt_debug.h"
+ * 
+ * 
+ * BƯỚC 2: Chọn một trong 3 cách debug ở trên
+ * -------------------------------------------
+ * - CÁCH 1: Debug tự động khi khởi động (recommend cho lần đầu)
+ * - CÁCH 2: Debug thủ công qua Serial Monitor
+ * - CÁCH 3: Debug tự động sau nhiều lần thất bại
+ * 
+ * 
+ * BƯỚC 3: Upload code và mở Serial Monitor
+ * -----------------------------------------
+ * 1. Upload firmware lên ESP32
+ * 2. Mở Serial Monitor (115200 baud)
+ * 3. Quan sát output từ debug tool
+ * 4. Đọc các thông báo lỗi chi tiết
+ * 5. Làm theo hướng dẫn sửa lỗi
+ * 
+ * 
+ * ========================================
+ * GIẢI THÍCH LỖI rc=5 (UNAUTHORIZED)
+ * ========================================
+ * 
+ * Lỗi rc=5 có nghĩa là ESP32 ĐÃ KẾT NỐI được với HiveMQ server,
+ * nhưng bị TỪ CHỐI ủy quyền (not authorized). Nguyên nhân phổ biến:
+ * 
+ * 1. ❌ DUPLICATE Client ID (phổ biến nhất!)
+ *    → Một device khác đang dùng CÙNG Client ID
+ *    → HiveMQ chỉ cho phép 1 connection/Client ID
+ *    → Fix: Đổi MQTT_CLIENT_ID trong hivemq_config.h
+ * 
+ * 2. ❌ User bị block hoặc disabled
+ *    → Kiểm tra HiveMQ Console → Access Management
+ *    → User phải ở trạng thái ENABLED
+ * 
+ * 3. ❌ Thiếu quyền (ACL/Permissions)
+ *    → User không có quyền connect với Client ID này
+ *    → Fix: Cấp quyền full (#) trong Access Management
+ * 
+ * 4. ❌ IP bị block
+ *    → Firewall hoặc Rate Limiting
+ *    → Kiểm tra Security Settings
+ * 
+ * 
+ * ========================================
+ * QUICK FIX (Thử ngay!)
+ * ========================================
+ * 
+ * 1. Vào HiveMQ Console → Clients
+ * 2. Tìm Client ID: ESP32_SmartIrrigation_001
+ * 3. Nếu thấy → Disconnect nó
+ * 4. Reset ESP32
+ * 
+ * HOẶC
+ * 
+ * 1. Mở hivemq_config.h
+ * 2. Đổi dòng 21:
+ *    Từ: const char* MQTT_CLIENT_ID = "ESP32_SmartIrrigation_001";
+ *    Thành: const char* MQTT_CLIENT_ID = "ESP32_SmartIrrigation_002";
+ * 3. Upload lại firmware
+ */
