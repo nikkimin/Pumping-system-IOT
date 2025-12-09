@@ -69,6 +69,8 @@ const int MAX_STRING_LENGTH = 256; // Maximum string length for safety
 // ========== FUNCTION PROTOTYPES ==========
 void scanWiFi();
 void connectToWiFi(String ssid, String password);
+void loadWiFiCreds();
+void saveWiFiCreds(String ssid, String password);
 
 void setupWebServer();
 void setupMQTT();
@@ -112,6 +114,8 @@ void setup() {
     
     Serial.println("\n🚀 ESP32 Smart Irrigation System Starting...");
     
+    Serial.printf("🆔 MQTT Client ID: %s\n", MQTT_CLIENT_ID);
+    
     // Load saved WiFi credentials and setup flag
     loadWiFiCreds();
     loadSetupFlag();
@@ -133,6 +137,21 @@ void setup() {
     
     // Initialize time
     configTzTime(TZ_INFO, ntpServer);
+    
+    Serial.print("⏳ Waiting for time sync");
+    int retry = 0;
+    while (time(nullptr) < 1600000000 && retry < 20) { // Valid timestamp > year 2020
+        delay(500);
+        Serial.print(".");
+        retry++;
+    }
+    if (time(nullptr) > 1600000000) {
+        Serial.println("\n✅ Time synced!");
+        time_t now = time(nullptr);
+        Serial.printf("🕒 Current time: %s", ctime(&now));
+    } else {
+        Serial.println("\n⚠️ Time sync failed, SSL may fail");
+    }
     
     // Setup web server
     setupWebServer();
@@ -423,18 +442,19 @@ void handleSetSpeed() {
 void setupMQTT() {
     Serial.println("📡 Initializing MQTT with HiveMQ Cloud...");
     
-    // Configure WiFiClientSecure with certificate
+    // Load Root CA certificate for TLS/SSL validation
     espClient.setCACert(hivemq_root_ca);
-    Serial.println("✅ Certificate loaded");
+    Serial.println("✅ Root CA certificate loaded (ISRG Root X1)");
     
     // Set MQTT server
     mqttClient.setServer(HIVEMQ_HOST, HIVEMQ_PORT);
     mqttClient.setCallback(mqttCallback);
     mqttClient.setBufferSize(MQTT_BUFFER_SIZE);
-    mqttClient.setKeepAlive(MQTT_KEEPALIVE);
+    mqttClient.setKeepAlive(MQTT_KEEPALIVE_INTERVAL);
     
     Serial.printf("🔐 MQTT Broker: %s:%d\n", HIVEMQ_HOST, HIVEMQ_PORT);
     Serial.printf("👤 Client ID: %s\n", MQTT_CLIENT_ID);
+    Serial.printf("👤 Username: %s\n", MQTT_USERNAME);
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
@@ -506,70 +526,99 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
 void reconnectMQTT() {
     static unsigned long lastAttempt = 0;
+    static int reconnectAttempts = 0;
+    static unsigned long reconnectDelay = MQTT_RECONNECT_DELAY;
     
-    // Don't retry too quickly
-    if (millis() - lastAttempt < MQTT_RECONNECT_DELAY) {
+    // Don't retry too quickly - use exponential backoff
+    if (millis() - lastAttempt < reconnectDelay) {
         return;
     }
     
     lastAttempt = millis();
     
     if (!mqttClient.connected()) {
-        Serial.printf("🔄 Attempting MQTT connection to %s...\n", HIVEMQ_HOST);
+        reconnectAttempts++;
+        Serial.printf("🔄 MQTT reconnect attempt #%d to %s...\n", reconnectAttempts, HIVEMQ_HOST);
+        Serial.printf("📋 Client ID: %s\n", MQTT_CLIENT_ID);
+        Serial.printf("📋 Username: %s\n", MQTT_USERNAME);
         
-        // Attempt to connect
+        // Attempt to connect with credentials
         if (mqttClient.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD)) {
             Serial.println("✅ MQTT Connected!");
             mqttConnected = true;
+            reconnectAttempts = 0;  // Reset counter on success
+            reconnectDelay = MQTT_RECONNECT_DELAY;  // Reset delay
             addLog("MQTT: Connected to HiveMQ Cloud");
             
-            // Subscribe to control topics
-            mqttClient.subscribe(TOPIC_PUMP_CONTROL, MQTT_QOS);
-            Serial.printf("📤 Subscribed to: %s\n", TOPIC_PUMP_CONTROL);
+            // Subscribe to control topics with error checking
+            if (mqttClient.subscribe(TOPIC_PUMP_CONTROL, MQTT_QOS)) {
+                Serial.printf("📤 Subscribed to: %s\n", TOPIC_PUMP_CONTROL);
+            } else {
+                Serial.printf("❌ Failed to subscribe to: %s\n", TOPIC_PUMP_CONTROL);
+            }
             
-            mqttClient.subscribe(TOPIC_MODE_CONTROL, MQTT_QOS);
-            Serial.printf("📤 Subscribed to: %s\n", TOPIC_MODE_CONTROL);
+            if (mqttClient.subscribe(TOPIC_MODE_CONTROL, MQTT_QOS)) {
+                Serial.printf("📤 Subscribed to: %s\n", TOPIC_MODE_CONTROL);
+            } else {
+                Serial.printf("❌ Failed to subscribe to: %s\n", TOPIC_MODE_CONTROL);
+            }
             
-            mqttClient.subscribe(TOPIC_CONFIG, MQTT_QOS);
-            Serial.printf("📤 Subscribed to: %s\n", TOPIC_CONFIG);
+            if (mqttClient.subscribe(TOPIC_CONFIG, MQTT_QOS)) {
+                Serial.printf("📤 Subscribed to: %s\n", TOPIC_CONFIG);
+            } else {
+                Serial.printf("❌ Failed to subscribe to: %s\n", TOPIC_CONFIG);
+            }
             
             // Publish initial status
             publishSystemStatus();
         } else {
             mqttConnected = false;
             int state = mqttClient.state();
-            Serial.printf("❌ MQTT Connection failed, rc=%d\n", state);
+            Serial.printf("❌ MQTT Connection failed, rc=%d (attempt %d)\n", state, reconnectAttempts);
             
-            // Error codes:
-            // -4 : MQTT_CONNECTION_TIMEOUT
-            // -3 : MQTT_CONNECTION_LOST
-            // -2 : MQTT_CONNECT_FAILED
-            // -1 : MQTT_DISCONNECTED
-            //  1 : MQTT_CONNECT_BAD_PROTOCOL
-            //  2 : MQTT_CONNECT_BAD_CLIENT_ID
-            //  3 : MQTT_CONNECT_UNAVAILABLE
-            //  4 : MQTT_CONNECT_BAD_CREDENTIALS
-            //  5 : MQTT_CONNECT_UNAUTHORIZED
-            
+            // Detailed error messages
             switch(state) {
                 case -4:
-                    Serial.println("   → Timeout connecting to server");
+                    Serial.println("   → MQTT_CONNECTION_TIMEOUT - Server didn't respond");
+                    break;
+                case -3:
+                    Serial.println("   → MQTT_CONNECTION_LOST - Network connection lost");
                     break;
                 case -2:
-                    Serial.println("   → Connect failed");
+                    Serial.println("   → MQTT_CONNECT_FAILED - Network connection failed");
+                    Serial.println("   → Check: WiFi, Host, Port, or Certificate");
+                    break;
+                case -1:
+                    Serial.println("   → MQTT_DISCONNECTED");
+                    break;
+                case 1:
+                    Serial.println("   → MQTT_CONNECT_BAD_PROTOCOL - Check MQTT version");
+                    break;
+                case 2:
+                    Serial.println("   → MQTT_CONNECT_BAD_CLIENT_ID - Invalid Client ID");
+                    break;
+                case 3:
+                    Serial.println("   → MQTT_CONNECT_UNAVAILABLE - Broker unavailable");
                     break;
                 case 4:
-                    Serial.println("   → Bad credentials (check username/password)");
+                    Serial.println("   → MQTT_CONNECT_BAD_CREDENTIALS - Wrong username/password");
+                    Serial.printf("   → Verify credentials in hivemq_config.h\n");
                     break;
                 case 5:
-                    Serial.println("   → Unauthorized");
+                    Serial.println("   → MQTT_CONNECT_UNAUTHORIZED - Not authorized");
+                    Serial.println("   → Check HiveMQ Cloud Access Management");
                     break;
                 default:
-                    Serial.printf("   → Unknown error: %d\n", state);
+                    Serial.printf("   → Unknown error code: %d\n", state);
             }
+            
+            // Exponential backoff: 5s, 10s, 20s, 30s (max)
+            reconnectDelay = min(reconnectDelay * 2, 30000UL);
+            Serial.printf("⏱️  Next attempt in %lu seconds\n", reconnectDelay / 1000);
         }
     }
 }
+
 
 void publishData() {
     if (!mqttClient.connected()) {
@@ -601,7 +650,7 @@ void publishData() {
     #endif
 }
 
-void publishPumpStatus(String reason = "") {
+void publishPumpStatus(String reason) {
     if (!mqttClient.connected()) {
         return;
     }

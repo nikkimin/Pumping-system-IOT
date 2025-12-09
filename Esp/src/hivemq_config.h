@@ -7,14 +7,17 @@
 // HiveMQ Cloud Cluster Information
 // Ví dụ: a1b2c3d4e5f6.s1.eu.hivemq.cloud (lấy từ HiveMQ Console)
 const char* HIVEMQ_HOST = "10f287a7e9ba424b88c279464c967aa4.s1.eu.hivemq.cloud";
-const int HIVEMQ_PORT = 8883;  // Port cho TLS/SSL (KHÔNG đổi)
+const int HIVEMQ_PORT = 8883;  // Port cho TLS/SSL ESP32 (KHÔNG đổi)
+const int HIVEMQ_WS_PORT = 8884;  // Port cho WebSocket Secure (wss://)
+const char* HIVEMQ_WS_PATH = "/mqtt";  // WebSocket path (KHÔNG đổi)
 
 // MQTT Credentials (tạo trong HiveMQ Console -> Access Management)
-const char* MQTT_USERNAME = "pump-IOT-7";      // Thay đổi username của bạn
-const char* MQTT_PASSWORD = "123456@aB";  // Thay đổi password của bạn
+const char* MQTT_USERNAME = "pumpuser";      // Username mới (viết thường, không dấu)
+const char* MQTT_PASSWORD = "pump123456";    // Password mới (đơn giản, dễ nhớ)
 
 // Client ID (unique cho mỗi ESP32 device)
-// Nếu có nhiều ESP32, thay đổi số cuối: _001, _002, _003...
+// ⚠️ QUAN TRỌNG: Nếu có nhiều ESP32, thay đổi số cuối: _001, _002, _003...
+// Web interface sẽ tự động tạo Client ID riêng (WebClient_xxxxx)
 const char* MQTT_CLIENT_ID = "ESP32_SmartIrrigation_001";
 
 // ========== MQTT TOPICS ==========
@@ -30,7 +33,7 @@ const char* TOPIC_MODE_CONTROL = "smartirrigation/mode/control";    // Chuyển 
 const char* TOPIC_CONFIG = "smartirrigation/config/update";         // Cập nhật cấu hình
 
 // ========== MQTT SETTINGS ==========
-#define MQTT_KEEPALIVE 60           // Keepalive interval (giây)
+#define MQTT_KEEPALIVE_INTERVAL 60  // Keepalive interval (giây)
 #define MQTT_QOS 1                  // QoS Level: 0=At most once, 1=At least once, 2=Exactly once
 #define MQTT_RETAIN false           // Retain messages (false = không lưu message cũ)
 #define MQTT_RECONNECT_DELAY 5000   // Delay giữa các lần reconnect (ms)

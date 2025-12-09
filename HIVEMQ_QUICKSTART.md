@@ -30,6 +30,15 @@ pio run --target upload
 pio device monitor
 ```
 
+**Kỳ vọng trong Serial Monitor:**
+```
+✅ Root CA certificate loaded (ISRG Root X1)
+🔐 MQTT Broker: 10f287a7e9ba424b88c279464c967aa4.s1.eu.hivemq.cloud:8883
+👤 Client ID: ESP32_SmartIrrigation_001
+✅ MQTT Connected!
+📤 Subscribed to: smartirrigation/pump/control
+```
+
 ### Bước 5: Test kết nối
 1. Dùng **MQTT Explorer** hoặc **HiveMQ Web Client**
 2. Subscribe to: `smartirrigation/#`
@@ -84,9 +93,29 @@ Payload: {"mode":"MANUAL","speed":60}
 Xem file hướng dẫn chi tiết tại: `.gemini/antigravity/brain/.../HUONG_DAN_HIVEMQ_CLOUD.md`
 
 ## ❓ Troubleshooting
-- **MQTT Connection Failed (-2)**: Kiểm tra WiFi và Host/Port
-- **MQTT Connection Failed (4)**: Sai username/password
-- **No data**: Kiểm tra Serial Monitor để debug
+
+### ESP32 Errors
+- **MQTT Connection Failed (rc=-2)**: 
+  - ❌ Sai HIVEMQ_HOST hoặc HIVEMQ_PORT
+  - ❌ WiFi không ổn định
+  - ✅ Check `hivemq_config.h` → HIVEMQ_HOST
+  
+- **MQTT Connection Failed (rc=4)**: 
+  - ❌ Sai MQTT_USERNAME hoặc MQTT_PASSWORD
+  - ✅ Check credentials trong `hivemq_config.h`
+  
+- **MQTT Connection Failed (rc=5)**: 
+  - ❌ Credentials OK nhưng không có quyền
+  - ✅ Check HiveMQ Console → Access Management
+
+### Web Interface Errors
+- **WebSocket connection failed**:
+  - ❌ Missing path `/mqtt`
+  - ✅ Check browser console for detailed error
+  
+- **"Đã vượt quá số lần thử kết nối"**:
+  - ❌ Cannot connect after 20 attempts
+  - ✅ Reload page và check credentials
 
 ---
 

@@ -1,6 +1,3 @@
-#ifndef HIVEMQ_CERT_H
-#define HIVEMQ_CERT_H
-
 // Let's Encrypt ISRG Root X1 Certificate
 // Valid until: June 4, 2035
 // Source: https://letsencrypt.org/certificates/
@@ -36,5 +33,3 @@ const char* hivemq_root_ca = \
 "mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d\n" \
 "emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=\n" \
 "-----END CERTIFICATE-----\n";
-
-#endif
