@@ -2,9 +2,9 @@
 const MQTT_HOST = "10f287a7e9ba424b88c279464c967aa4.s1.eu.hivemq.cloud";
 const MQTT_PORT = 8884; // WebSocket Secure Port
 const MQTT_PATH = "/mqtt"; // WebSocket path for HiveMQ Cloud
-const MQTT_CLIENT_ID = "WebClient_" + Math.random().toString(16).substr(2, 8);
+const MQTT_CLIENT_ID = "ESP32_SmartIrrigation_003";
 const MQTT_USERNAME = "pumpuser";
-const MQTT_PASSWORD = "pump123456";
+const MQTT_PASSWORD = "pump123456A";
 
 // Topics
 const TOPIC_SENSOR_DATA = "smartirrigation/sensor/data";

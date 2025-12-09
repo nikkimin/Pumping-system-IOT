@@ -1,89 +1,78 @@
-# 🌐 Smart Irrigation Web Interface
+# Smart Irrigation Web Interface
 
-Web interface để điều khiển hệ thống tưới cây thông minh IoT qua HiveMQ Cloud.
+Web interface để điều khiển hệ thống tưới cây thông minh qua MQTT Cloud.
 
-## 📋 Thông tin
-
-- **Mục đích**: Điều khiển ESP32 từ xa qua Internet
-- **Công nghệ**: HTML5, CSS3, JavaScript, MQTT over WebSocket
-- **Cloud**: HiveMQ Cloud (WebSocket Secure - port 8884)
-
-## 🚀 Deploy nhanh
-
-### Netlify (Khuyến nghị)
-1. Vào https://app.netlify.com/drop
-2. Kéo thả folder này vào
-3. Nhận URL → Mở và sử dụng!
-
-### Vercel
-```bash
-npm install -g vercel
-vercel --prod
-```
-
-### GitHub Pages
-```bash
-git init
-git add .
-git commit -m "Deploy web interface"
-git branch -M main
-git remote add origin https://github.com/your-username/your-repo.git
-git push -u origin main
-# Bật GitHub Pages trong Settings
-```
-
-## 📂 File structure
+## 📁 Cấu Trúc
 
 ```
 web-deploy/
-├── index.html       # Giao diện chính
-├── style.css        # Styling
-├── script.js        # MQTT logic
-├── DEPLOY_GUIDE.md  # Hướng dẫn chi tiết
-└── README.md        # File này
+├── index.html          # Giao diện chính
+├── script.js           # MQTT client và logic điều khiển  
+├── style.css           # Styling
+├── netlify.toml        # Config cho Netlify deployment
+├── DEPLOY_GUIDE.md     # Hướng dẫn deploy chi tiết
+└── README.md           # File này
 ```
 
-## 🔧 Cấu hình
+## 🌐 Deploy lên Netlify
 
-Mở `script.js` và kiểm tra:
+Xem hướng dẫn chi tiết tại: [DEPLOY_GUIDE.md](./DEPLOY_GUIDE.md)
+
+**Quick Start:**
+1. Push code lên GitHub
+2. Kết nối Netlify với GitHub repo
+3. Set base directory: `web-deploy`
+4. Deploy!
+
+## 🔧 Cấu Hình
+
+### MQTT Broker
+
+Trong file `script.js`, cập nhật thông tin HiveMQ Cloud:
 
 ```javascript
-const MQTT_HOST = "your-cluster.s1.eu.hivemq.cloud"; // HiveMQ Host
-const MQTT_USERNAME = "your_username";               // MQTT Username
-const MQTT_PASSWORD = "your_password";               // MQTT Password
+const MQTT_HOST = "YOUR_CLUSTER.s1.eu.hivemq.cloud";
+const MQTT_USERNAME = "your_username";
+const MQTT_PASSWORD = "your_password";
 ```
 
-## ✨ Tính năng
+## ✨ Tính Năng
 
-- ✅ Xem độ ẩm đất real-time
-- ✅ Xem trạng thái mưa
-- ✅ Điều khiển máy bơm (ON/OFF)
-- ✅ Chuyển chế độ AUTO/MANUAL
-- ✅ Điều chỉnh tốc độ bơm
-- ✅ Nhật ký sự kiện
+- 📊 Hiển thị sensor data real-time (độ ẩm đất, mưa)
+- 🎛️ Điều khiển pump ON/OFF
+- ⚙️ Chuyển đổi Auto/Manual mode
+- 🎚️ Điều chỉnh tốc độ pump (Manual mode)
+- 📋 Event log
+- 🔄 Auto reconnect khi mất kết nối
 
-## 📖 Hướng dẫn chi tiết
+## 🧪 Test Local
 
-Xem file [DEPLOY_GUIDE.md](./DEPLOY_GUIDE.md) để biết:
-- Cách deploy lên Netlify/Vercel
-- Troubleshooting
-- Test kết nối
-- Thêm vào Home Screen (mobile)
+```bash
+# Chạy web server đơn giản
+cd web-deploy
+python -m http.server 8000
 
-## 🔐 Bảo mật
+# Mở browser: http://localhost:8000
+```
 
-⚠️ **Lưu ý**: MQTT credentials hiện đang public trong `script.js`. Để bảo mật hơn:
-1. Tạo credentials riêng cho Web trong HiveMQ Console
-2. Giới hạn quyền chỉ publish/subscribe topics cần thiết
-3. Cân nhắc dùng backend proxy (NodeJS/Python) để ẩn credentials
+## 📡 MQTT Topics
 
-## 🆘 Support
+### Subscribe (Nhận từ ESP32)
+- `smartirrigation/sensor/data` - Sensor data
+- `smartirrigation/pump/status` - Pump status
+- `smartirrigation/system/status` - System info
 
-Nếu gặp vấn đề:
-1. Kiểm tra Browser Console (F12) → xem error
-2. Kiểm tra HiveMQ Cloud cluster status
-3. Xem file DEPLOY_GUIDE.md → Troubleshooting
+### Publish (Gửi đến ESP32)
+- `smartirrigation/pump/control` - Control pump
+- `smartirrigation/mode/control` - Change mode
 
----
+## 🔒 Bảo Mật
 
-**Made with ❤️ for IoT Automation**
+- ✅ HTTPS tự động (Netlify)
+- ✅ CSP headers (ngăn XSS)
+- ✅ MQTT WebSocket Secure (WSS)
+- ✅ Authentication credentials
+
+## 📞 Hỗ Trợ
+
+Gặp vấn đề? Xem [DEPLOY_GUIDE.md](./DEPLOY_GUIDE.md) phần Troubleshooting.

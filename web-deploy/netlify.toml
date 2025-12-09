@@ -1,0 +1,40 @@
+[build]
+  publish = "."
+  command = "echo 'No build required - static site'"
+
+# SPA routing - all requests to index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Security headers
+[[headers]]
+  for = "/*"
+    [headers.values]
+    # Prevent clickjacking
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    X-XSS-Protection = "1; mode=block"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    
+    # Content Security Policy - Allow HiveMQ WebSocket
+    Content-Security-Policy = """
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com;
+      style-src 'self' 'unsafe-inline';
+      connect-src 'self' wss://10f287a7e9ba424b88c279464c967aa4.s1.eu.hivemq.cloud:8884;
+      font-src 'self' data:;
+      img-src 'self' data:;
+    """
+
+# CORS headers for MQTT WebSocket
+[[headers]]
+  for = "/*.js"
+    [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+    
+[[headers]]
+  for = "/*.css"
+    [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

@@ -1,152 +1,215 @@
-# 🚀 Hướng Dẫn Deploy Web lên Netlify
+# 🌐 Deploy Smart Irrigation Web Interface to Netlify
 
-## 📁 Chuẩn bị
+Hướng dẫn deploy web interface lên Netlify để điều khiển hệ thống tưới cây từ xa qua internet.
 
-Folder `web-deploy` đã chứa tất cả file cần thiết:
-- ✅ `index.html` - Giao diện web (đã tối ưu cho cloud)
-- ✅ `style.css` - CSS styling
-- ✅ `script.js` - MQTT logic & control
+## 📋 Yêu Cầu
 
-## 🌐 Cách 1: Drag & Drop (Dễ nhất - 2 phút)
+### 1. Tài khoản GitHub
+- Tạo tài khoản tại: https://github.com
+- Cài đặt Git trên máy
 
-### Bước 1: Truy cập Netlify Drop
-1. Mở trình duyệt và vào: https://app.netlify.com/drop
-2. Nếu chưa có tài khoản → **Sign up** (miễn phí)
-3. Nếu đã có → **Log in**
+### 2. Tài khoản Netlify
+- Tạo tài khoản miễn phí tại: https://www.netlify.com
+- Đăng nhập bằng GitHub (recommended)
 
-### Bước 2: Deploy
-1. Kéo thả **toàn bộ folder `web-deploy`** vào vùng drop
-2. Hoặc click **"browse to upload"** → chọn 3 file trong `web-deploy`
-3. Chờ 5-10 giây → Netlify sẽ tự động deploy
-
-### Bước 3: Lấy URL
-Sau khi deploy thành công, bạn sẽ nhận được URL kiểu:
-```
-https://random-name-12345.netlify.app
-```
-
-**Lưu lại URL này!** Đây là địa chỉ để truy cập web interface từ bất kỳ đâu.
+### 3. HiveMQ Cloud
+- ESP32 đã kết nối thành công với HiveMQ Cloud
+- Xác nhận credentials hoạt động
 
 ---
 
-## 💻 Cách 2: Using Netlify CLI (Nâng cao)
+## 🚀 Cách Deploy
 
-### Cài đặt Netlify CLI
-```powershell
-npm install -g netlify-cli
+### **Phương Án 1: Deploy qua GitHub (Recommended)**
+
+#### Bước 1: Push code lên GitHub
+
+```bash
+# Di chuyển vào thư mục dự án
+cd d:\Pumping-system-IOT
+
+# Khởi tạo Git (nếu chưa có)
+git init
+
+# Add remote repository (thay YOUR_USERNAME/YOUR_REPO)
+git remote add origin https://github.com/YOUR_USERNAME/Pumping-system-IOT.git
+
+# Add và commit code
+git add .
+git commit -m "Add web deployment files for Netlify"
+
+# Push lên GitHub
+git push -u origin main
 ```
 
-### Login và Deploy
-```powershell
-# Login vào Netlify
-netlify login
+#### Bước 2: Kết nối Netlify với GitHub
 
-# Di chuyển vào folder web-deploy
-cd d:\Pumping-system-IOT\web-deploy
+1. Đăng nhập Netlify: https://app.netlify.com
+2. Click **"Add new site"** → **"Import an existing project"**
+3. Chọn **"Deploy with GitHub"**
+4. Authorize Netlify truy cập GitHub
+5. Chọn repository: `Pumping-system-IOT`
 
-# Deploy
-netlify deploy --prod
+#### Bước 3: Cấu hình Build Settings
 
-# Chọn:
-# - Create & configure a new site? → Yes
-# - Publish directory? → . (dấu chấm)
+```
+Base directory: web-deploy
+Build command: (để trống - không cần build)
+Publish directory: . (hoặc để trống)
 ```
 
-### Kết quả
-Netlify sẽ trả về:
-```
-✔ Deploy is live!
-Website URL:  https://your-site-name.netlify.app
-```
+#### Bước 4: Deploy
+
+1. Click **"Deploy site"**
+2. Đợi build hoàn thành (~30 giây)
+3. Nhận URL: `https://random-name-12345.netlify.app`
+
+#### Bước 5: Custom Domain (Optional)
+
+1. Trong Netlify Dashboard → **Site settings** → **Domain management**
+2. Click **"Options"** → **"Edit site name"**
+3. Đổi tên: `smart-irrigation-pumping` → `https://smart-irrigation-pumping.netlify.app`
 
 ---
 
-## 🧪 Test Kết Nối
+### **Phương Án 2: Deploy thủ công (Drag & Drop)**
 
-### Bước 1: Mở web đã deploy
-Truy cập URL vừa nhận được (ví dụ: `https://your-site.netlify.app`)
+#### Bước 1: Chuẩn bị files
 
-### Bước 2: Kiểm tra Console
-1. Nhấn **F12** → Console tab
-2. Kỳ vọng thấy:
-```javascript
+1. Mở folder: `d:\Pumping-system-IOT\web-deploy`
+2. Đảm bảo có các files:
+   - `index.html`
+   - `script.js`
+   - `style.css`
+   - `netlify.toml`
+
+#### Bước 2: Deploy
+
+1. Truy cập: https://app.netlify.com
+2. Click vào khu vực **"Drop your site folder here"**
+3. Kéo thả folder `web-deploy` vào
+4. Đợi upload và deploy
+5. Nhận URL: `https://random-name-12345.netlify.app`
+
+---
+
+## ✅ Kiểm Tra Deployment
+
+### 1. Mở trình duyệt
+
+Truy cập URL Netlify của bạn (ví dụ: `https://smart-irrigation.netlify.app`)
+
+### 2. Kiểm tra Console
+
+Nhấn **F12** → Tab **Console**, kiểm tra:
+
+```
 Connecting to: wss://10f287a7e9ba424b88c279464c967aa4.s1.eu.hivemq.cloud:8884/mqtt
-Client ID: WebClient_xxxxxxxx
 MQTT Connected
+Subscribed to all topics
 ```
 
-### Bước 3: Kiểm tra dữ liệu
-- Độ ẩm đất, trạng thái mưa phải cập nhật **real-time**
-- Thử **bật/tắt bơm** từ web interface
-- Kiểm tra ESP32 Serial Monitor xem có nhận lệnh không
+**Nếu thấy:**
+- ✅ `MQTT Connected` → Kết nối thành công
+- ❌ `MQTT Connection Failed` → Kiểm tra lại credentials
 
----
+### 3. Test điều khiển
 
-## ✅ Checklist Deploy Thành Công
-
-- [ ] Web interface load thành công
-- [ ] MQTT kết nối thành công (check Console)
-- [ ] Sensor data hiển thị real-time
-- [ ] Điều khiển pump từ web hoạt động
-- [ ] ESP32 nhận được lệnh từ web
+1. Chuyển sang **Manual mode**
+2. Click **"BẬT BƠM"**
+3. Kiểm tra Serial Monitor ESP32 - phải thấy:
+   ```
+   📥 MQTT Message received on [smartirrigation/pump/control]
+   PUMP_ON
+   ```
 
 ---
 
 ## 🔧 Troubleshooting
 
-### ❌ "MQTT Connection Failed"
-**Nguyên nhân**: Sai thông tin MQTT hoặc HiveMQ Cloud không chạy
+### Lỗi: "WebSocket connection failed"
 
-**Giải pháp**:
-1. Kiểm tra `script.js` → MQTT_HOST, MQTT_USERNAME, MQTT_PASSWORD
-2. Vào HiveMQ Console → kiểm tra cluster status = **RUNNING**
-3. Kiểm tra credentials trong **Access Management**
+**Nguyên nhân:** CSP (Content Security Policy) block WebSocket
 
-### ❌ "Cannot find 'script.js'"
-**Nguyên nhân**: File chưa được upload
+**Giải pháp:** Kiểm tra file `netlify.toml`:
+```toml
+connect-src 'self' wss://10f287a7e9ba424b88c279464c967aa4.s1.eu.hivemq.cloud:8884;
+```
 
-**Giải pháp**:
-- Đảm bảo cả 3 file (HTML, CSS, JS) đều ở **cùng folder**
-- Upload lại toàn bộ 3 file
+### Lỗi: "MQTT Connection timeout"
 
-### ❌ Web load nhưng không có data
-**Nguyên nhân**: ESP32 chưa kết nối hoặc chưa publish data
+**Nguyên nhân:** Sai MQTT credentials hoặc HiveMQ cluster offline
 
-**Giải pháp**:
-1. Kiểm tra ESP32 đã kết nối WiFi chưa
-2. Kiểm tra ESP32 Serial Monitor:
-   ```
-   ✅ MQTT Connected!
-   📊 Published sensor data: {...}
-   ```
-3. Dùng HiveMQ Web Client subscribe `smartirrigation/#` để xem data
+**Giải pháp:**
+1. Kiểm tra `script.js` → dòng 2-7 (credentials)
+2. Truy cập HiveMQ Console: https://console.hivemq.cloud
+3. Xác nhận cluster **RUNNING**
+4. Kiểm tra credentials trong **Access Management**
 
----
+### Lỗi: "404 Not Found" khi reload page
 
-## 🎯 Tính năng sau khi Deploy
+**Nguyên nhân:** Netlify không biết SPA routing
 
-✅ **Điều khiển từ xa** - Không cần cùng mạng WiFi với ESP32  
-✅ **Nhiều người dùng** - Nhiều người mở web cùng lúc  
-✅ **Cross-platform** - Điện thoại, tablet, máy tính  
-✅ **Real-time updates** - Dữ liệu cập nhật liên tục  
-✅ **Secure** - HTTPS + WSS (WebSocket Secure)  
+**Giải pháp:** Đảm bảo có file `netlify.toml` với:
+```toml
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+```
 
 ---
 
-## 📱 Bonus: Thêm vào Home Screen (Mobile)
+## 🎉 Hoàn Thành!
 
-### Android (Chrome):
-1. Mở web → Menu (⋮) → **Add to Home screen**
-2. Đặt tên → **Add**
-3. Icon sẽ xuất hiện trên màn hình chính
+Web interface hiện đã deploy lên Netlify. Bạn có thể:
+- ✅ Truy cập từ bất kỳ đâu qua internet
+- ✅ Điều khiển ESP32 real-time qua MQTT
+- ✅ Xem sensor data live
+- ✅ Auto HTTPS (Netlify tự động thêm)
 
-### iOS (Safari):
-1. Mở web → Share icon (□↑)
-2. Chọn **Add to Home Screen**
-3. Đặt tên → **Add**
+### Lưu ý quan trọng:
+
+- 🔒 **HTTPS tự động:** Netlify tự động cấp SSL certificate
+- 🆓 **Miễn phí:** 100GB bandwidth/tháng
+- 🔄 **Auto deploy:** Mỗi lần push code lên GitHub, Netlify tự động deploy
+- 📊 **Analytics:** Xem traffic trong Netlify Dashboard
 
 ---
 
-**Happy Deploying! 🎉**
+## 📝 Thông Tin Deploy
 
-> **Lưu ý**: Nếu thay đổi code, chỉ cần drag & drop lại folder vào Netlify để update!
+**URL Production:** `https://YOUR-SITE-NAME.netlify.app`
+
+**MQTT Broker:** `10f287a7e9ba424b88c279464c967aa4.s1.eu.hivemq.cloud:8884`
+
+**Topics Subscribe:**
+- `smartirrigation/sensor/data`
+- `smartirrigation/pump/status`
+- `smartirrigation/system/status`
+
+**Topics Publish:**
+- `smartirrigation/pump/control`
+- `smartirrigation/mode/control`
+
+---
+
+## 🔄 Cập Nhật Code
+
+Sau khi deploy lần đầu, để cập nhật:
+
+```bash
+# Sửa code trong web-deploy/
+cd d:\Pumping-system-IOT
+
+# Commit và push
+git add web-deploy/
+git commit -m "Update web interface"
+git push
+
+# Netlify tự động detect và deploy (30-60 giây)
+```
+
+---
+
+**Happy Controlling! 🚀**
