@@ -1,10 +1,10 @@
-// MQTT Configuration
-const MQTT_HOST = "10f287a7e9ba424b88c279464c967aa4.s1.eu.hivemq.cloud";
-const MQTT_PORT = 8884; // WebSocket Secure Port
-const MQTT_PATH = "/mqtt"; // WebSocket path for HiveMQ Cloud
-const MQTT_CLIENT_ID = "ESP32_SmartIrrigation_003";
-const MQTT_USERNAME = "pumpuser";
-const MQTT_PASSWORD = "pump123456A";
+// MQTT Configuration - HiveMQ Public Broker
+const MQTT_HOST = "broker.hivemq.com";  // Public broker
+const MQTT_PORT = 8000; // WebSocket Port (không mã hóa)
+const MQTT_PATH = "/mqtt"; // WebSocket path
+const MQTT_CLIENT_ID = "WebClient_" + Math.random().toString(16).substring(2, 10);  // Random Client ID
+const MQTT_USERNAME = "";  // Public broker không cần username
+const MQTT_PASSWORD = "";  // Public broker không cần password
 
 // Topics
 const TOPIC_SENSOR_DATA = "smartirrigation/sensor/data";
@@ -43,16 +43,13 @@ function initMQTT() {
     client.onMessageArrived = onMessageArrived;
 
     const options = {
-        useSSL: true,
-        userName: MQTT_USERNAME,
-        password: MQTT_PASSWORD,
+        useSSL: false,  // Public broker sử dụng WS (không mã hóa) thay vì WSS
         onSuccess: onConnect,
         onFailure: onFailure,
         keepAliveInterval: 30,
         cleanSession: true,
         timeout: 10
-        // ⚠️ NOTE: Paho MQTT JavaScript không hỗ trợ thuộc tính 'reconnect'
-        // Chúng ta phải tự implement reconnection logic trong onConnectionLost
+        // Public broker không cần username/password
     };
 
     client.connect(options);
@@ -62,7 +59,7 @@ function onConnect() {
     console.log("MQTT Connected");
     mqttConnected = true;
     reconnectAttempts = 0; // Reset reconnect counter on successful connection
-    addLog("✅ Đã kết nối tới HiveMQ Cloud");
+    addLog("✅ Đã kết nối tới HiveMQ Public Broker");
     updateWifiStatus("Đã kết nối Cloud");
 
     // Subscribe to topics

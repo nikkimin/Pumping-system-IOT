@@ -2,6 +2,8 @@
 #define MQTT_DEBUG_H
 
 #include <Arduino.h>
+#include <WiFi.h>
+#include <WiFiClient.h>
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include "hivemq_config.h"
@@ -19,10 +21,10 @@
 // ========== MQTT DEBUG HELPER ==========
 class MQTTDebugger {
 public:
-    // Debug và test từng bước kết nối MQTT
+    // Debug và test từng bước kết nối MQTT (cho WiFiClientSecure - TLS/SSL)
     static void debugMQTTConnection(WiFiClientSecure& client, PubSubClient& mqtt) {
         Serial.println("\n╔════════════════════════════════════════╗");
-        Serial.println("║  🔍 MQTT CONNECTION DEBUG TOOL        ║");
+        Serial.println("║  🔍 MQTT DEBUG TOOL (TLS/SSL)        ║");
         Serial.println("╚════════════════════════════════════════╝\n");
         
         // STEP 1: Check WiFi connection
@@ -44,6 +46,32 @@ public:
         checkMQTTCredentials();
         
         // STEP 7: Attempt MQTT connection with detailed logging
+        debugMQTTConnect(mqtt);
+        
+        Serial.println("\n╔════════════════════════════════════════╗");
+        Serial.println("║  ✅ DEBUG COMPLETE                     ║");
+        Serial.println("╚════════════════════════════════════════╝\n");
+    }
+    
+    // Debug cho WiFiClient (không TLS) - Public broker
+    static void debugMQTTConnection(WiFiClient& client, PubSubClient& mqtt) {
+        Serial.println("\n╔════════════════════════════════════════╗");
+        Serial.println("║  🔍 MQTT DEBUG TOOL (No TLS)         ║");
+        Serial.println("╚════════════════════════════════════════╝\n");
+        
+        // STEP 1: Check WiFi connection
+        checkWiFiConnection();
+        
+        // STEP 2: Test DNS resolution
+        testDNSResolution(HIVEMQ_HOST);
+        
+        // STEP 3: Test TCP connection (no TLS)
+        testTCPConnectionNoTLS(client, HIVEMQ_HOST, HIVEMQ_PORT);
+        
+        // STEP 4: Check MQTT credentials format
+        checkMQTTCredentialsPublic();
+        
+        // STEP 5: Attempt MQTT connection
         debugMQTTConnect(mqtt);
         
         Serial.println("\n╔════════════════════════════════════════╗");
@@ -221,18 +249,86 @@ private:
         Serial.println("      3. Verify username and password match exactly\n");
     }
     
+    // Test TCP connection without TLS (for public broker)
+    static void testTCPConnectionNoTLS(WiFiClient& client, const char* host, int port) {
+        Serial.println("🔌 STEP 3: Testing TCP Connection (No TLS)...");
+        Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        Serial.printf("   → Connecting to: %s:%d\n", host, port);
+        Serial.println("   → Mode: Plain TCP (không mã hóa)");
+        
+        unsigned long startTime = millis();
+        if (client.connect(host, port)) {
+            unsigned long connectTime = millis() - startTime;
+            Serial.println("   ✅ TCP Connection: SUCCESS");
+            Serial.printf("   → Connection time: %lu ms\n", connectTime);
+            Serial.println("   → Socket is open\n");
+            client.stop();
+        } else {
+            Serial.println("   ❌ TCP Connection: FAILED");
+            Serial.println("   → Cannot establish socket connection");
+            Serial.println("   → Check: Firewall, Internet connectivity, Host reachability\n");
+        }
+    }
+    
+    // Check MQTT credentials for public broker (username/password optional)
+    static void checkMQTTCredentialsPublic() {
+        Serial.println("🔑 STEP 4: Checking MQTT Configuration...");
+        Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        
+        Serial.printf("   → Client ID: '%s'\n", MQTT_CLIENT_ID);
+        Serial.printf("   → Username: '%s'\n", MQTT_USERNAME);
+        Serial.printf("   → Password: '%s'\n", MQTT_PASSWORD);
+        
+        // Validation checks
+        if (strlen(MQTT_CLIENT_ID) == 0) {
+            Serial.println("   ❌ Client ID is EMPTY!");
+            Serial.println("   → Client ID là bắt buộc!\n");
+        } else {
+            Serial.println("   ✅ Client ID: OK");
+        }
+        
+        if (strlen(MQTT_USERNAME) == 0 && strlen(MQTT_PASSWORD) == 0) {
+            Serial.println("   ℹ️  No authentication (Public broker mode)");
+            Serial.println("   → Username/Password are EMPTY (OK for public broker)\n");
+        } else if (strlen(MQTT_USERNAME) > 0 || strlen(MQTT_PASSWORD) > 0) {
+            Serial.println("   ⚠️  WARNING: Credentials detected on public broker!");
+            Serial.println("   → Public broker KHÔNG cần username/password");
+            Serial.println("   → Để trống để tránh lỗi\n");
+        }
+        
+        Serial.println("   📝 PUBLIC BROKER INFO:");
+        Serial.println("      • broker.hivemq.com không cần authentication");
+        Serial.println("      • Chỉ cần Client ID duy nhất");
+        Serial.println("      • Tất cả topic đều công khai\n");
+    }
+    
     // STEP 7: MQTT connection với detailed logging
     static void debugMQTTConnect(PubSubClient& mqtt) {
-        Serial.println("📡 STEP 7: Attempting MQTT Connection...");
+        Serial.println("📡 STEP 5: Attempting MQTT Connection...");
         Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         
         Serial.printf("   → Broker: %s:%d\n", HIVEMQ_HOST, HIVEMQ_PORT);
         Serial.printf("   → Client ID: %s\n", MQTT_CLIENT_ID);
-        Serial.printf("   → Username: %s\n", MQTT_USERNAME);
+        
+        bool useAuth = (strlen(MQTT_USERNAME) > 0 || strlen(MQTT_PASSWORD) > 0);
+        if (useAuth) {
+            Serial.printf("   → Username: %s\n", MQTT_USERNAME);
+            Serial.println("   → Authentication: ENABLED");
+        } else {
+            Serial.println("   → Authentication: DISABLED (Public broker)");
+        }
         Serial.println("   → Connecting...\n");
         
         unsigned long startTime = millis();
-        bool connected = mqtt.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD);
+        bool connected;
+        
+        // Connect with or without credentials
+        if (useAuth) {
+            connected = mqtt.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD);
+        } else {
+            connected = mqtt.connect(MQTT_CLIENT_ID);
+        }
+        
         unsigned long connectTime = millis() - startTime;
         
         if (connected) {
