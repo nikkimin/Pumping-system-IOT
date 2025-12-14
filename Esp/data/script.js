@@ -1,10 +1,10 @@
-// MQTT Configuration - HiveMQ Public Broker
-const MQTT_HOST = "broker.hivemq.com";  // Public broker
-const MQTT_PORT = 8884; // WebSocket Secure Port (WSS - cho HTTPS/Netlify)
+// MQTT Configuration - HiveMQ Cloud (Private)
+const MQTT_HOST = "e947a9991cc442918fe1e94b5268b686.s1.eu.hivemq.cloud";  // HiveMQ Cloud riêng
+const MQTT_PORT = 8884; // WebSocket Secure Port (WSS)
 const MQTT_PATH = "/mqtt"; // WebSocket path
 const MQTT_CLIENT_ID = "WebClient_" + Math.random().toString(16).substring(2, 10);  // Random Client ID
-const MQTT_USERNAME = "";  // Public broker không cần username
-const MQTT_PASSWORD = "";  // Public broker không cần password
+const MQTT_USERNAME = "pumpuser";  // HiveMQ Cloud username
+const MQTT_PASSWORD = "pump123456A";  // HiveMQ Cloud password
 
 // Topics
 const TOPIC_SENSOR_DATA = "smartirrigation/sensor/data";
@@ -43,13 +43,14 @@ function initMQTT() {
     client.onMessageArrived = onMessageArrived;
 
     const options = {
-        useSSL: true,  // WSS (mã hóa) - BẮT BUỘC cho HTTPS/Netlify
+        useSSL: true,  // WSS (mã hóa) - An toàn hơn
         onSuccess: onConnect,
         onFailure: onFailure,
         keepAliveInterval: 30,
         cleanSession: true,
-        timeout: 10
-        // Public broker không cần username/password
+        timeout: 10,
+        userName: MQTT_USERNAME,  // HiveMQ Cloud authentication
+        password: MQTT_PASSWORD   // HiveMQ Cloud authentication
     };
 
     client.connect(options);
@@ -59,7 +60,7 @@ function onConnect() {
     console.log("MQTT Connected");
     mqttConnected = true;
     reconnectAttempts = 0; // Reset reconnect counter on successful connection
-    addLog("✅ Đã kết nối tới HiveMQ Public Broker");
+    addLog("✅ Đã kết nối tới HiveMQ Cloud");
     updateWifiStatus("Đã kết nối Cloud");
 
     // Subscribe to topics

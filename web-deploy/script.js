@@ -1,10 +1,10 @@
-// MQTT Configuration - HiveMQ Public Broker
-const MQTT_HOST = "broker.hivemq.com";  // Public broker
+// MQTT Configuration - HiveMQ Cloud (Private)
+const MQTT_HOST = "e947a9991cc442918fe1e94b5268b686.s1.eu.hivemq.cloud";  // HiveMQ Cloud riêng
 const MQTT_PORT = 8884; // WebSocket Secure Port (WSS - cho HTTPS/Netlify)
 const MQTT_PATH = "/mqtt"; // WebSocket path
 const MQTT_CLIENT_ID = "WebClient_" + Math.random().toString(16).substring(2, 10);  // Random Client ID
-const MQTT_USERNAME = "";  // Public broker không cần username
-const MQTT_PASSWORD = "";  // Public broker không cần password
+const MQTT_USERNAME = "pumpuser";  // HiveMQ Cloud username
+const MQTT_PASSWORD = "pump123456A";  // HiveMQ Cloud password
 
 // Topics
 const TOPIC_SENSOR_DATA = "smartirrigation/sensor/data";
@@ -48,8 +48,9 @@ function initMQTT() {
         onFailure: onFailure,
         keepAliveInterval: 30,
         cleanSession: true,
-        timeout: 10
-        // Public broker không cần username/password
+        timeout: 10,
+        userName: MQTT_USERNAME,  // HiveMQ Cloud authentication
+        password: MQTT_PASSWORD   // HiveMQ Cloud authentication
     };
 
     client.connect(options);
