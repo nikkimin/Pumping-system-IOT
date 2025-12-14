@@ -1,18 +1,18 @@
 #ifndef HIVEMQ_CONFIG_H
 #define HIVEMQ_CONFIG_H
 
-// ========== HIVEMQ PUBLIC BROKER CONFIGURATION ==========
-// ⚠️ QUAN TRỌNG: Sử dụng HiveMQ Public Broker (miễn phí, không cần đăng ký)
+// ========== HIVEMQ PRIVATE CLOUD BROKER CONFIGURATION ==========
+// ⚠️ QUAN TRỌNG: Sử dụng HiveMQ Cloud Private Broker (cần authentication)
 
-// HiveMQ Public Broker Information
-const char* HIVEMQ_HOST = "broker.hivemq.com";  // Public broker
-const int HIVEMQ_PORT = 1883;  // Port cho TCP (không mã hóa)
-const int HIVEMQ_WS_PORT = 8000;  // Port cho WebSocket (ws://)
+// HiveMQ Cloud Private Broker Information
+const char* HIVEMQ_HOST = "e947a9991cc442918fe1e94b5268b686.s1.eu.hivemq.cloud";  // Private cloud broker
+const int HIVEMQ_PORT = 8883;  // Port cho TLS/SSL (mã hóa)
+const int HIVEMQ_WS_PORT = 8884;  // Port cho WebSocket Secure (wss://)
 const char* HIVEMQ_WS_PATH = "/mqtt";  // WebSocket path
 
-// MQTT Credentials (Public broker KHÔNG cần username/password)
-const char* MQTT_USERNAME = "";      // Để trống cho public broker
-const char* MQTT_PASSWORD = "";      // Để trống cho public broker
+// MQTT Credentials (Private broker CẦN username/password)
+const char* MQTT_USERNAME = "pumpuser";      // HiveMQ Cloud username
+const char* MQTT_PASSWORD = "pump123456A";   // HiveMQ Cloud password
 
 // Client ID (unique cho mỗi ESP32 device)
 // ⚠️ QUAN TRỌNG: Nếu có nhiều ESP32, thay đổi số cuối: _001, _002, _003...
@@ -46,10 +46,10 @@ const char* TOPIC_CONFIG = "smartirrigation/config/update";         // Cập nh�
 #define MQTT_DEBUG 1  // 1 = Bật debug, 0 = Tắt debug
 
 // ========== TLS/SSL CONFIGURATION ==========
-// ⚠️ Public broker KHÔNG SỬ DỤNG TLS/SSL
-// Port 1883 là kết nối không mã hóa (plain TCP)
-// Nếu muốn dùng TLS: port 8883, cần certificate
-#define USE_TLS 0  // 0 = Không dùng TLS (port 1883), 1 = Dùng TLS (port 8883)
+// ⚠️ Private Cloud broker YÊU CẦU TLS/SSL
+// Port 8883 là kết nối mã hóa (TLS/SSL)
+// Certificate đã được cấu hình trong hivemq_cert.h
+#define USE_TLS 1  // 0 = Không dùng TLS (port 1883), 1 = Dùng TLS (port 8883)
 
 // ========== NTP SERVERS ==========
 // Multiple NTP servers for better time sync reliability

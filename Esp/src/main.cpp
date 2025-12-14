@@ -45,7 +45,7 @@ bool mqttConnected = false;
 
 // ========== NETWORK OBJECTS ==========
 WebServer server(80);
-WiFiClient espClient;  // Standard WiFiClient for non-TLS connection
+WiFiClientSecure espClient;  // WiFiClientSecure for TLS/SSL connection to private broker
 PubSubClient mqttClient(espClient);
 
 // ========== GLOBAL VARIABLES ==========
@@ -465,10 +465,10 @@ void handleSetSpeed() {
 
 // ========== MQTT FUNCTIONS ==========
 void setupMQTT() {
-    Serial.println("📡 Initializing MQTT with HiveMQ Public Broker...");
+    Serial.println("📡 Initializing MQTT with HiveMQ Private Cloud Broker...");
     
-    // Public broker không cần certificate
-    // Kết nối qua TCP port 1883 (không mã hóa)
+    // Configure TLS/SSL certificate for private broker
+    espClient.setCACert(hivemq_root_ca);
     
     // Set MQTT server
     mqttClient.setServer(HIVEMQ_HOST, HIVEMQ_PORT);
@@ -478,7 +478,8 @@ void setupMQTT() {
     
     Serial.printf("🔐 MQTT Broker: %s:%d\n", HIVEMQ_HOST, HIVEMQ_PORT);
     Serial.printf("👤 Client ID: %s\n", MQTT_CLIENT_ID);
-    Serial.println("ℹ️ Public broker - No authentication required");
+    Serial.printf("👤 Username: %s\n", MQTT_USERNAME);
+    Serial.println("ℹ️ Private cloud broker - TLS enabled");
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
@@ -564,15 +565,16 @@ void reconnectMQTT() {
         reconnectAttempts++;
         Serial.printf("🔄 MQTT reconnect attempt #%d to %s...\n", reconnectAttempts, HIVEMQ_HOST);
         Serial.printf("📋 Client ID: %s\n", MQTT_CLIENT_ID);
-        Serial.println("ℹ️ Public broker - No credentials needed");
+        Serial.printf("👤 Username: %s\n", MQTT_USERNAME);
+        Serial.println("ℹ️ Private broker - Using credentials");
         
-        // Attempt to connect without credentials (public broker)
-        if (mqttClient.connect(MQTT_CLIENT_ID)) {
+        // Attempt to connect with credentials (private broker)
+        if (mqttClient.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD)) {
             Serial.println("✅ MQTT Connected!");
             mqttConnected = true;
             reconnectAttempts = 0;  // Reset counter on success
             reconnectDelay = MQTT_RECONNECT_DELAY;  // Reset delay
-            addLog("MQTT: Connected to HiveMQ Public Broker");
+            addLog("MQTT: Connected to HiveMQ Private Cloud Broker");
             
             // Subscribe to control topics with error checking
             if (mqttClient.subscribe(TOPIC_PUMP_CONTROL, MQTT_QOS)) {
