@@ -2,7 +2,7 @@
 const MQTT_HOST = "broker.hivemq.com";  // Public broker
 const MQTT_PORT = 8000; // WebSocket Port (không mã hóa)
 const MQTT_PATH = "/mqtt"; // WebSocket path
-const MQTT_CLIENT_ID = "ESP32_SmartIrrigation_003";
+const MQTT_CLIENT_ID = "WebClient_" + Math.random().toString(16).substring(2, 10);  // Random Client ID
 const MQTT_USERNAME = "";  // Public broker không cần username
 const MQTT_PASSWORD = "";  // Public broker không cần password
 
