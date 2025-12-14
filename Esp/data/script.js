@@ -1,6 +1,6 @@
 // MQTT Configuration - HiveMQ Public Broker
 const MQTT_HOST = "broker.hivemq.com";  // Public broker
-const MQTT_PORT = 8000; // WebSocket Port (không mã hóa)
+const MQTT_PORT = 8884; // WebSocket Secure Port (WSS - cho HTTPS/Netlify)
 const MQTT_PATH = "/mqtt"; // WebSocket path
 const MQTT_CLIENT_ID = "WebClient_" + Math.random().toString(16).substring(2, 10);  // Random Client ID
 const MQTT_USERNAME = "";  // Public broker không cần username
@@ -43,7 +43,7 @@ function initMQTT() {
     client.onMessageArrived = onMessageArrived;
 
     const options = {
-        useSSL: false,  // Public broker sử dụng WS (không mã hóa) thay vì WSS
+        useSSL: true,  // WSS (mã hóa) - BẮT BUỘC cho HTTPS/Netlify
         onSuccess: onConnect,
         onFailure: onFailure,
         keepAliveInterval: 30,
