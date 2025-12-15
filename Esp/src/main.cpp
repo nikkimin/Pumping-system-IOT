@@ -946,9 +946,10 @@ void addLog(String message) {
   }
 
   // 🛡️ CẤP PHÁT TRƯỚC: Dự trữ không gian trước khi nối chuỗi
-  int estimatedSize = eventLog.length() + message.length() + 30;
-  if (estimatedSize > eventLog.capacity() && estimatedSize < MAX_LOG_LENGTH) {
-    eventLog.reserve(estimatedSize + 100);
+  // Note: capacity() là protected trong ESP32, không thể truy cập
+  // Chỉ reserve khi cần (dựa vào length)
+  if (eventLog.length() < MAX_LOG_LENGTH) {
+    eventLog.reserve(eventLog.length() + message.length() + 100);
   }
 
   if (localtime_r(&now, &timeinfo)) {
@@ -974,62 +975,65 @@ void addLog(String message) {
 }
 
 void readUARTData() {
-  while (UnoSerial.available()) {
-    // 🛡️ CẤP PHÁT TRƯỚC: Dự trữ không gian bộ đệm
-    String data = "";
-    data.reserve(MAX_STRING_LENGTH);
+  if (!UnoSerial.available()) {
+    return;
+  }
 
-    // 🛡️ GIỚI HẠN KÍCH THƯỚC BỘ ĐỆM: Đọc với bảo vệ kích thước và timeout
-    unsigned long startTime = millis();
-    while (UnoSerial.available() && data.length() < MAX_STRING_LENGTH) {
-      char c = UnoSerial.read();
-      if (c == '\n')
-        break;
-      data += c;
+  // Đợi cho đến khi có newline character hoặc timeout
+  unsigned long waitStart = millis();
+  while (!UnoSerial.find('\n') && (millis() - waitStart < 200)) {
+    // Chờ tối đa 200ms cho newline
+    delay(10);
+  }
 
-      // 🛡️ BẢO VỆ TIMEOUT: Ngăn vòng lặp vô hạn
-      if (millis() - startTime > 1000) { // Timeout 1 giây
-        Serial.println("⚠️ UART read timeout! Buffer may be corrupted.");
-        UnoSerial.flush(); // Xóa bộ đệm còn lại
-        return;
+  // Nếu timeout, flush buffer và return
+  if (millis() - waitStart >= 200) {
+    Serial.println("⚠️ UART: No newline found, flushing buffer");
+    UnoSerial.flush();
+    return;
+  }
+
+  // Đọc từ đầu buffer (sau khi đã tìm thấy newline)
+  String data = UnoSerial.readStringUntil('\n');
+  data.trim();
+
+  // Kiểm tra dữ liệu có hợp lệ không
+  if (data.length() == 0) {
+    return;
+  }
+
+  // Kiểm tra kích thước
+  if (data.length() >= MAX_STRING_LENGTH) {
+    Serial.printf("⚠️ UART data too long (%d bytes), truncated\n",
+                  data.length());
+    data = data.substring(0, MAX_STRING_LENGTH - 1);
+  }
+
+  // Parse JSON
+  if (data.startsWith("{")) {
+    StaticJsonDocument<256> doc;
+    DeserializationError error = deserializeJson(doc, data);
+
+    if (!error) {
+      if (doc.containsKey("soil_moisture")) {
+        soilMoisture = doc["soil_moisture"];
       }
-    }
-
-    data.trim();
-
-    // 🛡️ KIỂM TRA KÍCH THƯỚC: Cảnh báo nếu bộ đệm đầy (có thể bị cắt)
-    if (data.length() >= MAX_STRING_LENGTH - 1) {
-      Serial.printf("⚠️ UART buffer full (%d bytes). Data may be truncated.\n",
-                    data.length());
-    }
-
-    if (data.length() == 0)
-      return;
-
-    if (data.startsWith("{")) {
-      StaticJsonDocument<256> doc;
-      DeserializationError error = deserializeJson(doc, data);
-
-      if (!error) {
-        if (doc.containsKey("soil_moisture")) {
-          soilMoisture = doc["soil_moisture"];
-        }
-        if (doc.containsKey("rain")) {
-          rainStatus = doc["rain"];
-        }
-        if (doc.containsKey("pump_status")) {
-          pumpStatus = doc["pump_status"];
-        }
-      } else {
-        Serial.printf("⚠️ JSON parse error from UART: %s\n", error.c_str());
+      if (doc.containsKey("rain")) {
+        rainStatus = doc["rain"];
       }
-    } else if (data == "PUMP_ON_ACK") {
-      pumpStatus = true;
-      addLog("Pump ON acknowledged");
-    } else if (data == "PUMP_OFF_ACK") {
-      pumpStatus = false;
-      addLog("Pump OFF acknowledged");
+      if (doc.containsKey("pump_status")) {
+        pumpStatus = doc["pump_status"];
+      }
+    } else {
+      Serial.printf("⚠️ JSON parse error from UART: %s\n", error.c_str());
+      Serial.printf("   Raw data: %s\n", data.c_str());
     }
+  } else if (data == "PUMP_ON_ACK") {
+    pumpStatus = true;
+    addLog("Pump ON acknowledged");
+  } else if (data == "PUMP_OFF_ACK") {
+    pumpStatus = false;
+    addLog("Pump OFF acknowledged");
   }
 }
 
@@ -1120,7 +1124,7 @@ void handleMemoryStats() {
 
   // Sử dụng bộ nhớ log
   doc["log_size"] = eventLog.length();
-  doc["log_capacity"] = eventLog.capacity();
+  // Note: capacity() là protected trong ESP32, không thể truy cập
   doc["log_max"] = MAX_LOG_LENGTH;
 
   // Bộ đệm MQTT
