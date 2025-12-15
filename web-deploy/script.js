@@ -63,12 +63,42 @@ function onConnect() {
     addLog("✅ Đã kết nối tới HiveMQ Public Broker");
     updateWifiStatus("Đã kết nối Cloud");
 
-    // Subscribe to topics
-    client.subscribe(TOPIC_SENSOR_DATA);
-    client.subscribe(TOPIC_PUMP_STATUS);
-    client.subscribe(TOPIC_SYSTEM_STATUS);
+    // Subscribe to topics with QoS 1 and callbacks
+    client.subscribe(TOPIC_SENSOR_DATA, {
+        qos: 1,
+        onSuccess: function () {
+            console.log("✅ Subscribed to:", TOPIC_SENSOR_DATA, "with QoS 1");
+            addLog("Subscribe: " + TOPIC_SENSOR_DATA);
+        },
+        onFailure: function (err) {
+            console.error("❌ Failed to subscribe to:", TOPIC_SENSOR_DATA, err);
+            addLog("⚠️ Lỗi subscribe: " + TOPIC_SENSOR_DATA);
+        }
+    });
 
-    console.log("Subscribed to all topics");
+    client.subscribe(TOPIC_PUMP_STATUS, {
+        qos: 1,
+        onSuccess: function () {
+            console.log("✅ Subscribed to:", TOPIC_PUMP_STATUS, "with QoS 1");
+            addLog("Subscribe: " + TOPIC_PUMP_STATUS);
+        },
+        onFailure: function (err) {
+            console.error("❌ Failed to subscribe to:", TOPIC_PUMP_STATUS, err);
+            addLog("⚠️ Lỗi subscribe: " + TOPIC_PUMP_STATUS);
+        }
+    });
+
+    client.subscribe(TOPIC_SYSTEM_STATUS, {
+        qos: 1,
+        onSuccess: function () {
+            console.log("✅ Subscribed to:", TOPIC_SYSTEM_STATUS, "with QoS 1");
+            addLog("Subscribe: " + TOPIC_SYSTEM_STATUS);
+        },
+        onFailure: function (err) {
+            console.error("❌ Failed to subscribe to:", TOPIC_SYSTEM_STATUS, err);
+            addLog("⚠️ Lỗi subscribe: " + TOPIC_SYSTEM_STATUS);
+        }
+    });
 }
 
 function onFailure(responseObject) {
@@ -127,23 +157,39 @@ function attemptReconnect() {
 }
 
 function onMessageArrived(message) {
-    console.log("Message Arrived: " + message.destinationName + " - " + message.payloadString);
     const topic = message.destinationName;
-    let data;
+    const payload = message.payloadString;
 
+    // Enhanced logging
+    console.log("📩 Message Arrived:");
+    console.log("  Topic:", topic);
+    console.log("  Payload:", payload);
+    console.log("  QoS:", message.qos);
+    console.log("  Retained:", message.retained);
+
+    let data;
     try {
-        data = JSON.parse(message.payloadString);
+        data = JSON.parse(payload);
     } catch (e) {
-        console.error("JSON Parse Error", e);
+        console.error("❌ JSON Parse Error on topic", topic, ":", e);
+        console.error("  Raw payload:", payload);
+        addLog("⚠️ Lỗi parse JSON từ: " + topic);
         return;
     }
 
     if (topic === TOPIC_SENSOR_DATA) {
+        console.log("📊 Processing sensor data:", data);
         updateSensorUI(data);
+        addLog("Nhận dữ liệu cảm biến: Độ ẩm " + data.soil_moisture + "%");
     } else if (topic === TOPIC_PUMP_STATUS) {
+        console.log("🔄 Processing pump status:", data);
         updatePumpUI(data);
+        addLog("Cập nhật trạng thái bơm: " + data.status);
     } else if (topic === TOPIC_SYSTEM_STATUS) {
+        console.log("ℹ️ System status received:", data);
         // Optional: Update system info if needed
+    } else {
+        console.warn("⚠️ Unknown topic:", topic);
     }
 }
 
@@ -154,6 +200,14 @@ function publishMessage(topic, payloadObj) {
     }
     const message = new Paho.MQTT.Message(JSON.stringify(payloadObj));
     message.destinationName = topic;
+    message.qos = 1;  // QoS 1 for at-least-once delivery
+    message.retained = false;  // Don't retain control messages
+
+    console.log("📤 Publishing message:");
+    console.log("  Topic:", topic);
+    console.log("  Payload:", JSON.stringify(payloadObj));
+    console.log("  QoS:", message.qos);
+
     client.send(message);
 }
 

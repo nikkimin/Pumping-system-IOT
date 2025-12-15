@@ -491,8 +491,13 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     String topicStr = String(topic);
     String messageStr = String(message);
     
+    // Enhanced logging with more details
     #if MQTT_DEBUG
-    Serial.printf("📥 MQTT Message received on [%s]: %s\n", topic, message);
+    Serial.println("\n📥 ========== MQTT MESSAGE RECEIVED ==========");
+    Serial.printf("   Topic: %s\n", topic);
+    Serial.printf("   Length: %u bytes\n", length);
+    Serial.printf("   Payload: %s\n", message);
+    Serial.println("============================================\n");
     #endif
     
     // Parse JSON message
@@ -500,7 +505,9 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     DeserializationError error = deserializeJson(doc, message);
     
     if (error) {
-        Serial.printf("❌ JSON parse error: %s\n", error.c_str());
+        Serial.printf("❌ JSON parse error on topic [%s]: %s\n", topic, error.c_str());
+        Serial.printf("   Raw payload: %s\n", message);
+        addLog("MQTT Parse Error: " + topicStr);
         return;
     }
     
@@ -508,20 +515,28 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if (topicStr == TOPIC_PUMP_CONTROL) {
         String command = doc["command"] | "";
         
+        Serial.printf("🎛️  Processing PUMP_CONTROL command: %s\n", command.c_str());
+        
         if (command == "turn_on") {
             UnoSerial.println("PUMP_ON");
             pumpStatus = true;
             
             if (doc.containsKey("speed")) {
                 pumpSpeed = doc["speed"];
+                Serial.printf("   Speed set to: %d%%\n", pumpSpeed);
             }
             
             addLog("MQTT: Pump ON (Speed: " + String(pumpSpeed) + "%)");
+            Serial.println("✅ Pump turned ON successfully");
         } 
         else if (command == "turn_off") {
             UnoSerial.println("PUMP_OFF");
             pumpStatus = false;
             addLog("MQTT: Pump OFF");
+            Serial.println("✅ Pump turned OFF successfully");
+        }
+        else {
+            Serial.printf("⚠️  Unknown pump command: %s\n", command.c_str());
         }
     }
     
@@ -529,16 +544,24 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     else if (topicStr == TOPIC_MODE_CONTROL) {
         String mode = doc["mode"] | "";
         
+        Serial.printf("🎛️  Processing MODE_CONTROL: %s\n", mode.c_str());
+        
         if (mode == "AUTO") {
             autoMode = true;
             addLog("MQTT: Mode changed to AUTO");
+            Serial.println("✅ Mode changed to AUTO");
         } 
         else if (mode == "MANUAL") {
             autoMode = false;
             if (doc.containsKey("speed")) {
                 pumpSpeed = doc["speed"];
+                Serial.printf("   Speed set to: %d%%\n", pumpSpeed);
             }
             addLog("MQTT: Mode changed to MANUAL");
+            Serial.println("✅ Mode changed to MANUAL");
+        }
+        else {
+            Serial.printf("⚠️  Unknown mode: %s\n", mode.c_str());
         }
     }
     
@@ -546,6 +569,11 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     else if (topicStr == TOPIC_CONFIG) {
         // Reserved for future configuration updates
         Serial.println("📝 Config update received");
+    }
+    
+    // Unknown topic
+    else {
+        Serial.printf("⚠️  Message received on UNKNOWN topic: %s\n", topic);
     }
 }
 

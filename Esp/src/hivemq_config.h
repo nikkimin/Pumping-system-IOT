@@ -31,9 +31,9 @@ const char* TOPIC_PUMP_CONTROL = "smartirrigation/pump/control";    // Điều k
 const char* TOPIC_MODE_CONTROL = "smartirrigation/mode/control";    // Chuyển AUTO/MANUAL
 const char* TOPIC_CONFIG = "smartirrigation/config/update";         // Cập nhật cấu hình
 
-// ========== MQTT SETTINGS (ĐÃ TỐI ƯU CHO PUBLIC BROKER) ==========
+// ========== MQTT SETTINGS (ĐÃ TỐI ƯU CHO PRIVATE BROKER) ==========
 #define MQTT_KEEPALIVE_INTERVAL 90   // Keepalive interval (giây) - tăng để giảm traffic
-#define MQTT_QOS 0                   // QoS Level: 0=Nhanh nhất (phù hợp public broker)
+#define MQTT_QOS 1                   // QoS Level: 1=At-least-once delivery (đảm bảo nhận message)
 #define MQTT_RETAIN false            // Retain messages (false = không lưu message cũ)
 #define MQTT_RECONNECT_DELAY 3000    // Delay giữa các lần reconnect - giảm để kết nối nhanh hơn
 #define MQTT_BUFFER_SIZE 1024        // Buffer size - tăng để xử lý message lớn
