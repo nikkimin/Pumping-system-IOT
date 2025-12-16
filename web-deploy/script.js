@@ -187,6 +187,18 @@ function onMessageArrived(message) {
     if (topic === TOPIC_SENSOR_DATA) {
         console.log("📊 Processing sensor data:", data);
         updateSensorUI(data);
+
+        // 🔹 ESP32 sends pump_status in sensor data, not separate pump/status topic
+        // Extract pump status and update pump UI
+        if (data.pump_status !== undefined && data.auto_mode !== undefined) {
+            const pumpUIData = {
+                status: data.pump_status ? "ON" : "OFF",
+                mode: data.auto_mode ? "AUTO" : "MANUAL",
+                speed: data.pump_speed || 50
+            };
+            updatePumpUI(pumpUIData);
+        }
+
         addLog("Nhận dữ liệu cảm biến: Độ ẩm " + data.soil_moisture + "%");
     } else if (topic === TOPIC_PUMP_STATUS) {
         console.log("🔄 Processing pump status:", data);
