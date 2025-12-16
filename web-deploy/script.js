@@ -21,6 +21,13 @@ const MAX_RECONNECT_ATTEMPTS = 20; // Maximum retry attempts
 const MAX_RECONNECT_DELAY = 30000; // Max 30 seconds
 const INITIAL_RECONNECT_DELAY = 2000; // Start with 2 seconds
 
+// Global state variables for database logging
+let soilMoisture = 0;
+let rainStatus = 0; // 0 = no rain, 1 = rain
+let pumpStatus = false;
+let autoMode = true;
+let pumpSpeed = 50;
+
 // Update current time
 function updateTime() {
     const now = new Date();
@@ -319,6 +326,10 @@ const SENSOR_LOG_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
 // UI Update Functions
 function updateSensorUI(data) {
+    // 🔹 Save to global variables for database logging
+    soilMoisture = data.soil_moisture;
+    rainStatus = data.rain_status ? 1 : 0;
+
     document.getElementById('soilMoisture').textContent = data.soil_moisture + '%';
     document.getElementById('rainStatus').textContent = data.rain_status ? 'CÓ MƯA' : 'KHÔNG MƯA';
     document.getElementById('rainStatusText').textContent = data.rain_status ? 'Đang mưa' : 'Không mưa';
@@ -342,6 +353,12 @@ function updatePumpUI(data) {
     // data.status is "ON" or "OFF"
     const isPumpOn = (data.status === "ON");
 
+    // 🔹 Save to global variables for database logging
+    pumpStatus = isPumpOn;
+    if (data.speed) {
+        pumpSpeed = data.speed;
+    }
+
     // 🔹 DATABASE INTEGRATION: Log pump state changes
     if (prevPumpStatusForDB !== null && prevPumpStatusForDB !== isPumpOn) {
         const eventType = isPumpOn ? 'PUMP_ON' : 'PUMP_OFF';
@@ -360,6 +377,9 @@ function updatePumpUI(data) {
 
     // data.mode is "AUTO" or "MANUAL"
     const isAuto = (data.mode === "AUTO");
+
+    // 🔹 Save to global variables for database logging
+    autoMode = isAuto;
 
     // 🔹 DATABASE INTEGRATION: Log mode changes
     if (prevAutoModeForDB !== null && prevAutoModeForDB !== isAuto) {
@@ -454,6 +474,19 @@ function controlPump(turnOn) {
         command: command,
         speed: speed
     });
+
+    // 🔹 DATABASE INTEGRATION: Log manual pump control
+    const eventType = turnOn ? 'PUMP_ON' : 'PUMP_OFF';
+    const oldVal = pumpStatus ? 'ON' : 'OFF';
+    const newVal = turnOn ? 'ON' : 'OFF';
+    logEventToDB(eventType, oldVal, newVal, {
+        soil_moisture: soilMoisture,
+        pump_speed: speed,
+        triggered_by: 'manual'
+    });
+
+    // Update global state
+    pumpStatus = turnOn;
 }
 
 // Add log entry
