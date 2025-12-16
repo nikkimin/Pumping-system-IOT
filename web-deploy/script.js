@@ -494,18 +494,9 @@ function controlPump(turnOn) {
         speed: speed
     });
 
-    // 🔹 DATABASE INTEGRATION: Log manual pump control
-    const eventType = turnOn ? 'PUMP_ON' : 'PUMP_OFF';
-    const oldVal = pumpStatus ? 'ON' : 'OFF';
-    const newVal = turnOn ? 'ON' : 'OFF';
-    logEventToDB(eventType, oldVal, newVal, {
-        soil_moisture: soilMoisture,
-        pump_speed: speed,
-        triggered_by: 'manual'
-    });
-
-    // Update global state
-    pumpStatus = turnOn;
+    // ℹ️ Note: Database logging happens when ESP32 responds via MQTT
+    // This prevents duplicate logging and ensures we log actual state changes
+    // Manual logging removed to eliminate UI delay
 }
 
 // Add log entry
