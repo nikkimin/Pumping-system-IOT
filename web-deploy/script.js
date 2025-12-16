@@ -211,6 +211,112 @@ function publishMessage(topic, payloadObj) {
     client.send(message);
 }
 
+// ===================================================================
+// DATABASE INTEGRATION FUNCTIONS
+// ===================================================================
+
+/**
+ * Log event to database via Netlify Function
+ * @param {string} eventType - "PUMP_ON" | "PUMP_OFF" | "MODE_CHANGE"
+ * @param {string} oldValue - Previous state
+ * @param {string} newValue - New state
+ * @param {object} metadata - Additional data (soil_moisture, pump_speed, etc.)
+ */
+async function logEventToDB(eventType, oldValue, newValue, metadata = {}) {
+    try {
+        const response = await fetch('/.netlify/functions/log-event', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                event_type: eventType,
+                old_value: oldValue,
+                new_value: newValue,
+                triggered_by: 'mqtt',
+                metadata: metadata
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            console.log('✅ Event logged to database:', eventType);
+        } else {
+            console.error('❌ Failed to log event:', result.error);
+        }
+    } catch (error) {
+        console.error('❌ Database logging error:', error);
+        // Don't throw - fail silently to not break UI
+    }
+}
+
+/**
+ * Log sensor data to database (called every 5 minutes)
+ */
+async function logSensorToDB() {
+    try {
+        const response = await fetch('/.netlify/functions/log-sensor', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                soil_moisture: soilMoisture,
+                rain_status: rainStatus === 1,
+                pump_status: pumpStatus,
+                auto_mode: autoMode,
+                pump_speed: pumpSpeed
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            console.log('📊 Sensor data logged to database');
+        }
+    } catch (error) {
+        console.error('❌ Sensor logging error:', error);
+    }
+}
+
+/**
+ * Load statistics from database and update UI
+ * @param {string} period - "today" | "7days" | "30days"
+ */
+async function loadStats(period = '7days') {
+    try {
+        const response = await fetch(`/.netlify/functions/get-stats?period=${period}`);
+        const stats = await response.json();
+
+        if (stats.success) {
+            // Update statistics UI
+            document.getElementById('pumpOnCount').textContent = stats.pump_on_count;
+            document.getElementById('modeChangeCount').textContent = stats.mode_changes;
+            document.getElementById('totalRuntime').textContent = stats.total_runtime_minutes + ' phút';
+            document.getElementById('avgMoisture').textContent = stats.avg_soil_moisture.toFixed(1) + '%';
+
+            // Update last update timestamp
+            const updateTime = new Date(stats.last_updated).toLocaleTimeString('vi-VN');
+            document.getElementById('statsLastUpdate').textContent = `Cập nhật lúc ${updateTime}`;
+
+            console.log('📊 Statistics loaded successfully');
+        } else {
+            console.error('❌ Failed to load stats:', stats.error);
+            document.getElementById('statsLastUpdate').textContent = 'Lỗi tải dữ liệu';
+        }
+    } catch (error) {
+        console.error('❌ Stats loading error:', error);
+        document.getElementById('statsLastUpdate').textContent = 'Chưa kết nối database';
+    }
+}
+
+// Global variables to track previous states for change detection
+let prevPumpStatusForDB = null;
+let prevAutoModeForDB = null;
+let lastSensorLogTime = 0;
+const SENSOR_LOG_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
 // UI Update Functions
 function updateSensorUI(data) {
     document.getElementById('soilMoisture').textContent = data.soil_moisture + '%';
@@ -235,12 +341,36 @@ function updateSensorUI(data) {
 function updatePumpUI(data) {
     // data.status is "ON" or "OFF"
     const isPumpOn = (data.status === "ON");
+
+    // 🔹 DATABASE INTEGRATION: Log pump state changes
+    if (prevPumpStatusForDB !== null && prevPumpStatusForDB !== isPumpOn) {
+        const eventType = isPumpOn ? 'PUMP_ON' : 'PUMP_OFF';
+        const oldVal = prevPumpStatusForDB ? 'ON' : 'OFF';
+        const newVal = isPumpOn ? 'ON' : 'OFF';
+        logEventToDB(eventType, oldVal, newVal, {
+            soil_moisture: soilMoisture,
+            pump_speed: pumpSpeed
+        });
+    }
+    prevPumpStatusForDB = isPumpOn;
+
     document.getElementById('pumpStatus').textContent = isPumpOn ? 'ĐANG BƠM' : 'ĐÃ TẮT';
     document.getElementById('pumpStatusBadge').textContent = isPumpOn ? 'ON' : 'OFF';
     document.getElementById('pumpStatusBadge').className = isPumpOn ? 'status-badge status-on' : 'status-badge status-off';
 
     // data.mode is "AUTO" or "MANUAL"
     const isAuto = (data.mode === "AUTO");
+
+    // 🔹 DATABASE INTEGRATION: Log mode changes
+    if (prevAutoModeForDB !== null && prevAutoModeForDB !== isAuto) {
+        const oldMode = prevAutoModeForDB ? 'AUTO' : 'MANUAL';
+        const newMode = isAuto ? 'AUTO' : 'MANUAL';
+        logEventToDB('MODE_CHANGE', oldMode, newMode, {
+            soil_moisture: soilMoisture
+        });
+    }
+    prevAutoModeForDB = isAuto;
+
     document.getElementById('modeToggle').checked = !isAuto;
 
     const modeStatus = document.getElementById('modeStatus');
@@ -269,6 +399,8 @@ function updateWifiStatus(status) {
 // User Actions
 function toggleMode() {
     const isManual = document.getElementById('modeToggle').checked;
+    const wasAuto = !isManual;
+
     // Optimistic UI update
     const modeStatus = document.getElementById('modeStatus');
     const manualControls = document.getElementById('manualControls');
@@ -279,12 +411,18 @@ function toggleMode() {
         manualControls.style.display = 'block';
         addLog('Đang chuyển sang chế độ thủ công...');
         publishMessage(TOPIC_MODE_CONTROL, { mode: "MANUAL" });
+
+        // 🔹 DATABASE INTEGRATION: Log mode change
+        logEventToDB('MODE_CHANGE', 'AUTO', 'MANUAL', { soil_moisture: soilMoisture });
     } else {
         modeStatus.textContent = 'CHẾ ĐỘ TỰ ĐỘNG';
         modeStatus.className = 'status-badge status-auto';
         manualControls.style.display = 'none';
         addLog('Đang chuyển sang chế độ tự động...');
         publishMessage(TOPIC_MODE_CONTROL, { mode: "AUTO" });
+
+        // 🔹 DATABASE INTEGRATION: Log mode change
+        logEventToDB('MODE_CHANGE', 'MANUAL', 'AUTO', { soil_moisture: soilMoisture });
     }
 }
 
@@ -372,4 +510,21 @@ document.addEventListener('DOMContentLoaded', function () {
     // Initial setup
     initMQTT();
     addLog('Giao diện đang khởi động...');
+
+    // 🔹 DATABASE INTEGRATION: Load statistics on page load
+    setTimeout(() => {
+        loadStats('7days'); // Load after 3 seconds to ensure MQTT connected
+    }, 3000);
+
+    // 🔹 DATABASE INTEGRATION: Auto-refresh statistics every 30 seconds
+    setInterval(() => {
+        loadStats('7days');
+    }, 30000);
+
+    // 🔹 DATABASE INTEGRATION: Log sensor data every 5 minutes
+    setInterval(() => {
+        if (mqttConnected) {
+            logSensorToDB();
+        }
+    }, SENSOR_LOG_INTERVAL);
 });

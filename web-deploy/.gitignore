@@ -1,0 +1,30 @@
+# Ignore node modules
+node_modules/
+
+# Ignore build outputs
+.netlify/
+dist/
+build/
+
+# Ignore environment files with secrets
+.env
+.env.local
+.env.production
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Ignore logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Keep .env.example (template without secrets)
+!.env.example

@@ -1,0 +1,20 @@
+{
+  "name": "iot-pumping-system",
+  "version": "1.0.0",
+  "description": "IoT Smart Irrigation System with NeonDB statistics",
+  "type": "module",
+  "scripts": {
+    "dev": "netlify dev",
+    "build": "echo 'No build required - static site'",
+    "deploy": "netlify deploy --prod"
+  },
+  "dependencies": {
+    "pg": "^8.11.3"
+  },
+  "devDependencies": {
+    "netlify-cli": "^17.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
