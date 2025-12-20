@@ -2,6 +2,17 @@
 #include <ArduinoJson.h>
 #include <SoftwareSerial.h> // Thêm thư viện SoftwareSerial
 
+// Forward declarations (khai báo trước các hàm)
+void checkESPConnection();
+void controlPumpFromESP();
+void sendSensorData();
+void debugStatus();
+void controlStatusLED();
+int readRainSensor();
+int readSoilMoisture();
+void emergencyStop();
+void testSerial();
+
 // Cảm biến và relay
 const int RAIN_SENSOR_PIN = A1; // Chuyển sang analog để đọc % khả năng mưa
 const int SOIL_SENSOR_PIN = A0;
