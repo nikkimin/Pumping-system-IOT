@@ -14,7 +14,7 @@ import { query } from './db-pool.js';
  * Expected request body:
  * {
  *   "soil_moisture": 45,        // 0-100%
- *   "rain_status": false,       // boolean
+ *   "rain_status": 75,          // 0-100% (rain probability)
  *   "pump_status": true,        // boolean
  *   "auto_mode": true,          // boolean
  *   "pump_speed": 50            // 0-100% (optional)
@@ -80,6 +80,17 @@ export async function handler(event, context) {
                 headers,
                 body: JSON.stringify({
                     error: 'soil_moisture must be between 0 and 100'
+                })
+            };
+        }
+
+        // Validate rain_status range (0-100% probability)
+        if (rain_status < 0 || rain_status > 100) {
+            return {
+                statusCode: 400,
+                headers,
+                body: JSON.stringify({
+                    error: 'rain_status must be between 0 and 100'
                 })
             };
         }

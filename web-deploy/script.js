@@ -23,7 +23,7 @@ const INITIAL_RECONNECT_DELAY = 2000; // Start with 2 seconds
 
 // Global state variables for database logging
 let soilMoisture = 0;
-let rainStatus = 0; // 0 = no rain, 1 = rain
+let rainProbability = 0; // 0-100% rain probability
 let pumpStatus = false;
 let autoMode = true;
 let pumpSpeed = 50;
@@ -289,7 +289,7 @@ async function logSensorToDB() {
             },
             body: JSON.stringify({
                 soil_moisture: soilMoisture,
-                rain_status: rainStatus === 1,
+                rain_status: rainProbability,  // Send 0-100 percentage instead of boolean
                 pump_status: pumpStatus,
                 auto_mode: autoMode,
                 pump_speed: pumpSpeed
@@ -347,12 +347,21 @@ const SENSOR_LOG_INTERVAL = 5 * 60 * 1000; // 5 minutes
 function updateSensorUI(data) {
     // 🔹 Save to global variables for database logging
     soilMoisture = data.soil_moisture;
-    rainStatus = data.rain_status ? 1 : 0;
+    // Support both new rain_probability and legacy rain_status (boolean)
+    rainProbability = data.rain_probability !== undefined ? data.rain_probability :
+        (data.rain_status ? 100 : 0);
 
     document.getElementById('soilMoisture').textContent = data.soil_moisture + '%';
-    document.getElementById('rainStatus').textContent = data.rain_status ? 'CÓ MƯA' : 'KHÔNG MƯA';
-    document.getElementById('rainStatusText').textContent = data.rain_status ? 'Đang mưa' : 'Không mưa';
-    document.getElementById('rainStatusText').className = data.rain_status ? 'status-badge status-info' : 'status-badge status-warning';
+
+    // Display rain probability as percentage
+    document.getElementById('rainStatus').textContent = rainProbability + '% MƯA';
+
+    // Logic: >75% = raining
+    const isRaining = rainProbability > 75;
+    document.getElementById('rainStatusText').textContent =
+        isRaining ? `Đang mưa (${rainProbability}%)` : `Không mưa (${rainProbability}%)`;
+    document.getElementById('rainStatusText').className =
+        isRaining ? 'status-badge status-info' : 'status-badge status-warning';
 
     // Update Soil Status
     const soilStatus = document.getElementById('soilStatus');

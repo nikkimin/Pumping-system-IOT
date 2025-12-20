@@ -35,7 +35,7 @@ const int TXD2 = 17;
 
 // ========== SYSTEM STATE ==========
 int soilMoisture = 0;
-int rainStatus = 0;
+int rainStatus = 0; // Khả năng mưa 0-100% (0=khô, 100=mưa nhiều)
 bool pumpStatus = false;
 bool autoMode = true;
 int pumpSpeed = 50;
@@ -63,7 +63,7 @@ int prevPumpSpeed = 50;
 
 // ========== SENSOR DATA TRACKING (for change detection) ==========
 int prevSoilMoisture = -1; // -1 = chưa có dữ liệu
-int prevRainStatus = -1;
+int prevRainStatus = -1;   // Theo dõi thay đổi rain % (>= 10% mới publish)
 unsigned long lastForcedPublish = 0;
 const unsigned long FORCED_PUBLISH_INTERVAL = 300000; // 5 phút heartbeat
 
@@ -755,8 +755,8 @@ void publishData() {
     hasSignificantChange = true;
   }
 
-  // Mưa: thay đổi ngay lập tức
-  if (prevRainStatus == -1 || rainStatus != prevRainStatus) {
+  // Mưa: thay đổi >= 10% mới gửi (tránh nhiễu)
+  if (prevRainStatus == -1 || abs(rainStatus - prevRainStatus) >= 10) {
     hasSignificantChange = true;
   }
 
@@ -791,7 +791,7 @@ void publishData() {
   StaticJsonDocument<256> doc;
   doc["timestamp"] = time(nullptr);
   doc["soil_moisture"] = soilMoisture;
-  doc["rain_status"] = rainStatus;
+  doc["rain_probability"] = rainStatus; // % khả năng mưa (0-100%)
   doc["pump_status"] = pumpStatus;
   doc["auto_mode"] = autoMode;
   doc["pump_speed"] = pumpSpeed;
@@ -1076,7 +1076,8 @@ void checkAutoWatering() {
     return;
 
   // Logic tưới tự động
-  if ((currentHour == 6 || currentHour == 17) && rainStatus == 0 &&
+  // Chỉ tưới khi khả năng mưa < 75% (ngưỡng "Có mưa")
+  if ((currentHour == 6 || currentHour == 17) && rainStatus < 75 &&
       soilMoisture < 40) {
     if (!pumpStatus) {
       UnoSerial.println("PUMP_ON");

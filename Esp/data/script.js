@@ -180,7 +180,8 @@ function onMessageArrived(message) {
     if (topic === TOPIC_SENSOR_DATA) {
         console.log("📊 Processing sensor data:", data);
         updateSensorUI(data);
-        addLog("Nhận dữ liệu cảm biến: Độ ẩm " + data.soil_moisture + "%");
+        const rainProb = data.rain_probability || 0;
+        addLog("Nhận dữ liệu cảm biến: Độ ẩm " + data.soil_moisture + "%, Mưa " + rainProb + "%");
     } else if (topic === TOPIC_PUMP_STATUS) {
         console.log("🔄 Processing pump status:", data);
         updatePumpUI(data);
@@ -214,9 +215,26 @@ function publishMessage(topic, payloadObj) {
 // UI Update Functions
 function updateSensorUI(data) {
     document.getElementById('soilMoisture').textContent = data.soil_moisture + '%';
-    document.getElementById('rainStatus').textContent = data.rain_status ? 'CÓ MƯA' : 'KHÔNG MƯA';
-    document.getElementById('rainStatusText').textContent = data.rain_status ? 'Đang mưa' : 'Không mưa';
-    document.getElementById('rainStatusText').className = data.rain_status ? 'status-badge status-info' : 'status-badge status-warning';
+
+    // Hiển thị % khả năng mưa với ngưỡng màu sắc
+    const rainProb = data.rain_probability || 0;
+    document.getElementById('rainStatus').textContent = rainProb + '%';
+
+    // Phân loại theo ngưỡng
+    const rainStatusText = document.getElementById('rainStatusText');
+    if (rainProb >= 75) {
+        rainStatusText.textContent = '🌧️ Đang mưa';
+        rainStatusText.className = 'status-badge status-info';
+    } else if (rainProb >= 50) {
+        rainStatusText.textContent = '☁️ Có thể mưa';
+        rainStatusText.className = 'status-badge status-warning';
+    } else if (rainProb >= 25) {
+        rainStatusText.textContent = '🌤️ Ít mưa';
+        rainStatusText.className = 'status-badge status-success';
+    } else {
+        rainStatusText.textContent = '☀️ Khô ráo';
+        rainStatusText.className = 'status-badge status-off';
+    }
 
     // Update Soil Status
     const soilStatus = document.getElementById('soilStatus');

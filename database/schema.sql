@@ -2,6 +2,7 @@
 -- NeonDB Schema for IoT Pumping System Statistics
 -- ===================================================================
 -- Created: 2025-12-16
+-- Updated: 2025-12-20 - Added rain percentage support (0-100%)
 -- Purpose: Track pump operations, sensor data, and generate statistics
 -- ===================================================================
 
@@ -44,7 +45,7 @@ CREATE TABLE IF NOT EXISTS sensor_logs (
     id SERIAL PRIMARY KEY,
     timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     soil_moisture INT NOT NULL CHECK (soil_moisture >= 0 AND soil_moisture <= 100),
-    rain_status BOOLEAN NOT NULL,
+    rain_status INT NOT NULL CHECK (rain_status >= 0 AND rain_status <= 100),  -- 0-100% rain probability
     pump_status BOOLEAN NOT NULL,
     auto_mode BOOLEAN NOT NULL,
     pump_speed INT CHECK (pump_speed >= 0 AND pump_speed <= 100)
@@ -158,9 +159,9 @@ EXECUTE FUNCTION update_daily_stats();
 -- ('PUMP_OFF', 'ON', 'OFF', 'manual', '{"pump_speed": 50, "soil_moisture": 35}');
 
 -- INSERT INTO sensor_logs (soil_moisture, rain_status, pump_status, auto_mode, pump_speed) VALUES
--- (45, false, false, true, 50),
--- (30, false, true, false, 50),
--- (35, false, false, false, 50);
+-- (45, 0, false, true, 50),    -- 0% rain probability
+-- (30, 50, true, false, 50),   -- 50% rain probability
+-- (35, 85, false, false, 50);  -- 85% rain probability
 
 -- ===================================================================
 -- VERIFICATION QUERIES
