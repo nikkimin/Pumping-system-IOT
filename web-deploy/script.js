@@ -319,7 +319,7 @@ async function loadStats(period = '7days') {
             // Update statistics UI
             document.getElementById('pumpOnCount').textContent = stats.pump_on_count;
             document.getElementById('modeChangeCount').textContent = stats.mode_changes;
-            document.getElementById('totalRuntime').textContent = stats.total_runtime_minutes + ' phút';
+            document.getElementById('avgRainRate').textContent = stats.avg_rain_rate.toFixed(1) + '%';
             document.getElementById('avgMoisture').textContent = stats.avg_soil_moisture.toFixed(1) + '%';
 
             // Update last update timestamp
