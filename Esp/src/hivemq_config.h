@@ -51,7 +51,7 @@ const char *TOPIC_CONFIG = "smartirrigation/config/update"; // Cập nhật cấ
 // Lưu ý: Đây là interval để KIỂM TRA thay đổi, không phải interval GỬI dữ liệu
 // Logic mới chỉ GỬI khi có thay đổi + heartbeat mỗi 5 phút
 #define SENSOR_PUBLISH_INTERVAL                                                \
-  1000 // Kiểm tra mỗi 1 giây (giảm từ 5s → 1s để cập nhật nhanh hơn)
+  2000 // Kiểm tra mỗi 2 giây (cân bằng giữa real-time và giảm spam)
 #define STATUS_PUBLISH_INTERVAL                                                \
   30000 // Kiểm tra mỗi 30 giây (nhưng chỉ gửi khi cần)
 

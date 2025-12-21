@@ -756,13 +756,13 @@ void publishData() {
   // Kiểm tra xem có thay đổi đáng kể không
   bool hasSignificantChange = false;
 
-  // Độ ẩm đất: thay đổi >= 2% mới gửi (tránh nhiễu)
-  if (prevSoilMoisture == -1 || abs(soilMoisture - prevSoilMoisture) >= 2) {
+  // Độ ẩm đất: thay đổi >= 5% mới gửi (tăng từ 2% để tránh nhiễu)
+  if (prevSoilMoisture == -1 || abs(soilMoisture - prevSoilMoisture) >= 5) {
     hasSignificantChange = true;
   }
 
-  // Mưa: thay đổi >= 10% mới gửi (tránh nhiễu)
-  if (prevRainStatus == -1 || abs(rainStatus - prevRainStatus) >= 10) {
+  // Mưa: thay đổi >= 15% mới gửi (tăng từ 10% để tránh nhiễu)
+  if (prevRainStatus == -1 || abs(rainStatus - prevRainStatus) >= 15) {
     hasSignificantChange = true;
   }
 
@@ -776,8 +776,8 @@ void publishData() {
     hasSignificantChange = true;
   }
 
-  // Pump speed: thay đổi >= 5% mới gửi
-  if (abs(pumpSpeed - prevPumpSpeed) >= 5) {
+  // Pump speed: thay đổi >= 10% mới gửi (tăng từ 5% để giảm spam)
+  if (abs(pumpSpeed - prevPumpSpeed) >= 10) {
     hasSignificantChange = true;
   }
 
