@@ -1,9 +1,7 @@
 #include <ArduinoJson.h>
-#include <ArduinoOTA.h>
 #include <EEPROM.h>
 #include <PubSubClient.h>
 #include <SPIFFS.h>
-#include <Update.h>
 #include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -110,9 +108,6 @@ void loadSetupFlag();
 void saveSetupFlag(bool completed);
 void handleResetSetup();
 void handleMemoryStats(); // 🛡️ Endpoint giám sát bộ nhớ
-void setupOTA();          // 🔄 OTA Configuration
-void handleOTAPage();     // 🔄 OTA Web Page
-void handleOTAUpload();   // 🔄 OTA Firmware Upload
 
 // ========== SETUP ==========
 void setup() {
@@ -177,9 +172,6 @@ void setup() {
   // Thiết lập MQTT
   setupMQTT();
 
-  // Thiết lập OTA
-  setupOTA();
-
   Serial.println("✅ System initialized successfully");
 }
 
@@ -205,7 +197,6 @@ void loop() {
   }
 
   server.handleClient();
-  ArduinoOTA.handle(); // Xử lý OTA updates
   readUARTData();
 
   if (WiFi.status() == WL_CONNECTED) {
@@ -368,15 +359,7 @@ void setupWebServer() {
   server.on("/setSpeed", HTTP_GET, handleSetSpeed);
   server.on("/reset-setup", HTTP_GET, handleResetSetup);
   server.on("/memory", HTTP_GET,
-            handleMemoryStats);               // 🛡️ Endpoint giám sát bộ nhớ
-  server.on("/ota", HTTP_GET, handleOTAPage); // 🔄 OTA Page
-  server.on(
-      "/ota-update", HTTP_POST,
-      []() {
-        server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
-        ESP.restart();
-      },
-      handleOTAUpload); // 🔄 OTA Upload Handler
+            handleMemoryStats); // 🛡️ Endpoint giám sát bộ nhớ
   server.onNotFound([]() { server.send(404, "text/plain", "404: Not Found"); });
 
   server.begin();
@@ -1176,105 +1159,3 @@ void handleMemoryStats() {
 }
 
 // 🔄 ========== OTA FUNCTIONS ==========
-void setupOTA() {
-  // Chỉ setup OTA khi WiFi đã kết nối
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("⚠️ WiFi not connected, skipping OTA setup");
-    return;
-  }
-
-  Serial.println("🔄 Setting up OTA...");
-
-  // Cấu hình ArduinoOTA
-  ArduinoOTA.setHostname("ESP32-SmartIrrigation");
-  ArduinoOTA.setPassword("pump123456A"); // Password để bảo mật OTA
-
-  // Callbacks cho ArduinoOTA
-  ArduinoOTA.onStart([]() {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH) {
-      type = "sketch";
-    } else { // U_SPIFFS
-      type = "filesystem";
-      SPIFFS.end(); // Unmount SPIFFS trước khi update
-    }
-    Serial.println("🔄 OTA Update Started: " + type);
-    addLog("OTA Update Started");
-  });
-
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\n✅ OTA Update Complete!");
-    addLog("OTA Update Complete");
-  });
-
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    unsigned int percent = (progress / (total / 100));
-    Serial.printf("📊 OTA Progress: %u%%\r", percent);
-  });
-
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("❌ OTA Error[%u]: ", error);
-    String errorMsg = "";
-    if (error == OTA_AUTH_ERROR) {
-      errorMsg = "Auth Failed";
-    } else if (error == OTA_BEGIN_ERROR) {
-      errorMsg = "Begin Failed";
-    } else if (error == OTA_CONNECT_ERROR) {
-      errorMsg = "Connect Failed";
-    } else if (error == OTA_RECEIVE_ERROR) {
-      errorMsg = "Receive Failed";
-    } else if (error == OTA_END_ERROR) {
-      errorMsg = "End Failed";
-    }
-    Serial.println(errorMsg);
-    addLog("OTA Error: " + errorMsg);
-  });
-
-  ArduinoOTA.begin();
-  Serial.println("✅ OTA Ready");
-  Serial.printf("   IP address: %s\n", WiFi.localIP().toString().c_str());
-  Serial.println("   Hostname: ESP32-SmartIrrigation");
-  Serial.println("   Password: pump123456A");
-  addLog("OTA initialized at " + WiFi.localIP().toString());
-}
-
-void handleOTAPage() {
-  File file = SPIFFS.open("/ota.html", "r");
-  if (!file) {
-    server.send(404, "text/plain", "ota.html not found");
-    return;
-  }
-
-  server.streamFile(file, "text/html");
-  file.close();
-}
-
-void handleOTAUpload() {
-  HTTPUpload &upload = server.upload();
-
-  if (upload.status == UPLOAD_FILE_START) {
-    Serial.printf("🔄 OTA Upload Start: %s\n", upload.filename.c_str());
-
-    // Bắt đầu update
-    if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
-      Update.printError(Serial);
-    }
-  } else if (upload.status == UPLOAD_FILE_WRITE) {
-    // Ghi dữ liệu firmware
-    if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-      Update.printError(Serial);
-    } else {
-      // In progress
-      Serial.printf("📊 Written: %u bytes\r", upload.totalSize);
-    }
-  } else if (upload.status == UPLOAD_FILE_END) {
-    if (Update.end(true)) {
-      Serial.printf("\n✅ OTA Success: %u bytes\n", upload.totalSize);
-      Serial.println("🔄 Rebooting...");
-      addLog("OTA upload successful, rebooting...");
-    } else {
-      Update.printError(Serial);
-      addLog("OTA upload failed");
-    }
-  }
-}
