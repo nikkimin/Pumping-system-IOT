@@ -454,11 +454,15 @@ void handleControlPump() {
     if (newPumpStatus != prevPumpStatus) {
       if (newPumpStatus) {
         UnoSerial.println("PUMP_ON");
+        UnoSerial.flush(); // 🔧 FLUSH để gửi ngay
+        delay(50);
         pumpStatus = true;
         addLog("Manual: Pump ON");
         publishPumpStatus("Manual control: ON");
       } else {
         UnoSerial.println("PUMP_OFF");
+        UnoSerial.flush(); // 🔧 FLUSH để gửi ngay
+        delay(50);
         pumpStatus = false;
         addLog("Manual: Pump OFF");
         publishPumpStatus("Manual control: OFF");
@@ -557,8 +561,13 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
     Serial.printf("🎛️  Processing PUMP_CONTROL command: %s\n", command.c_str());
 
     if (command == "turn_on") {
+      // Gửi lệnh UART với flush để đảm bảo gửi ngay
       UnoSerial.println("PUMP_ON");
+      UnoSerial.flush(); // 🔧 FLUSH để gửi ngay lập tức
+      delay(50);         // Đợi Arduino xử lý
+
       pumpStatus = true;
+      prevPumpStatus = true; // Cập nhật trạng thái trước
 
       if (doc.containsKey("speed")) {
         pumpSpeed = doc["speed"];
@@ -566,12 +575,26 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
       }
 
       addLog("MQTT: Pump ON (Speed: " + String(pumpSpeed) + "%)");
-      Serial.println("✅ Pump turned ON successfully");
+      Serial.println("✅ Pump turned ON successfully + UART sent");
+
+      // Publish ngay trạng thái để web cập nhật
+      publishPumpStatus("MQTT control: ON");
+
     } else if (command == "turn_off") {
+      // Gửi lệnh UART với flush để đảm bảo gửi ngay
       UnoSerial.println("PUMP_OFF");
+      UnoSerial.flush(); // 🔧 FLUSH để gửi ngay lập tức
+      delay(50);         // Đợi Arduino xử lý
+
       pumpStatus = false;
+      prevPumpStatus = false; // Cập nhật trạng thái trước
+
       addLog("MQTT: Pump OFF");
-      Serial.println("✅ Pump turned OFF successfully");
+      Serial.println("✅ Pump turned OFF successfully + UART sent");
+
+      // Publish ngay trạng thái để web cập nhật
+      publishPumpStatus("MQTT control: OFF");
+
     } else {
       Serial.printf("⚠️  Unknown pump command: %s\n", command.c_str());
     }

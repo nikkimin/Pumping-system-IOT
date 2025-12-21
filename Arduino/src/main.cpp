@@ -29,7 +29,7 @@ bool pumpState = false;
 bool lastPumpState = false;
 unsigned long lastSendTime = 0;
 unsigned long lastConnectionCheck = 0;
-const long SEND_INTERVAL = 2000;
+const long SEND_INTERVAL = 500; // Giảm từ 2000ms → 500ms để cập nhật nhanh hơn
 const long CONNECTION_TIMEOUT = 10000; // 10 giây không có data = mất kết nối
 bool espConnected = false;
 
