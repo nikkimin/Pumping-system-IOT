@@ -101,16 +101,54 @@ void loop() {
 
 // Đọc cảm biến mưa - trả về % khả năng mưa (0-100%)
 int readRainSensor() {
-  // Đọc nhiều lần để lấy giá trị trung bình và ổn định
-  int readings = 5;
-  int total = 0;
+  // ĐỌC NHIỀU MẪU HỖN để lọc nhiễu tốt hơn
+  const int numReadings = 10; // Tăng từ 5 → 10 samples
+  int readings[numReadings];
 
-  for (int i = 0; i < readings; i++) {
-    total += analogRead(RAIN_SENSOR_PIN);
-    delay(2);
+  // Đọc 10 lần với delay lớn hơn để tránh nhiễu ADC
+  for (int i = 0; i < numReadings; i++) {
+    readings[i] = analogRead(RAIN_SENSOR_PIN);
+    delay(5); // Tăng từ 2ms → 5ms để ADC ổn định
   }
 
-  int rawValue = total / readings;
+  // SẮP XẾP để tìm MEDIAN (giá trị giữa) - loại bỏ spike noise tốt hơn average
+  // Bubble sort đơn giản
+  for (int i = 0; i < numReadings - 1; i++) {
+    for (int j = i + 1; j < numReadings; j++) {
+      if (readings[i] > readings[j]) {
+        int temp = readings[i];
+        readings[i] = readings[j];
+        readings[j] = temp;
+      }
+    }
+  }
+
+  // Lấy MEDIAN (phần tử ở giữa sau khi sắp xếp)
+  int rawValue = readings[numReadings / 2];
+
+  // MOVING AVERAGE FILTER: Giữ 70% giá trị cũ + 30% giá trị mới
+  // Điều này làm mịn giá trị theo thời gian, tránh nhảy đột ngột
+  static int lastRawValue = -1;
+  if (lastRawValue == -1) {
+    lastRawValue = rawValue; // Lần đầu tiên
+  } else {
+    // Exponential Moving Average (EMA)
+    rawValue = (lastRawValue * 7 + rawValue * 3) / 10;
+    lastRawValue = rawValue;
+  }
+
+  // Debug: In giá trị raw mỗi 10 giây
+  static unsigned long lastDebug = 0;
+  if (millis() - lastDebug >= 10000) {
+    Serial.print("Rain Sensor Raw: ");
+    Serial.print(rawValue);
+    Serial.print(" (DRY=");
+    Serial.print(RAIN_DRY_VALUE);
+    Serial.print(", WET=");
+    Serial.print(RAIN_WET_VALUE);
+    Serial.println(")");
+    lastDebug = millis();
+  }
 
   // Giới hạn giá trị trong khoảng calibration
   if (rawValue > RAIN_DRY_VALUE)
@@ -127,16 +165,39 @@ int readRainSensor() {
 
 // Đọc cảm biến độ ẩm đất (cải thiện độ ổn định)
 int readSoilMoisture() {
-  // Đọc nhiều lần để lấy giá trị trung bình
-  int readings = 5;
-  int total = 0;
+  // ĐỌC NHIỀU MẪU với median filter để lọc nhiễu
+  const int numReadings = 10; // Tăng từ 5 → 10 samples
+  int readings[numReadings];
 
-  for (int i = 0; i < readings; i++) {
-    total += analogRead(SOIL_SENSOR_PIN);
-    delay(2);
+  // Đọc 10 lần với delay để ADC ổn định
+  for (int i = 0; i < numReadings; i++) {
+    readings[i] = analogRead(SOIL_SENSOR_PIN);
+    delay(5); // Tăng từ 2ms → 5ms
   }
 
-  int rawValue = total / readings;
+  // SẮP XẾP để tìm MEDIAN (loại bỏ spike noise)
+  for (int i = 0; i < numReadings - 1; i++) {
+    for (int j = i + 1; j < numReadings; j++) {
+      if (readings[i] > readings[j]) {
+        int temp = readings[i];
+        readings[i] = readings[j];
+        readings[j] = temp;
+      }
+    }
+  }
+
+  // Lấy MEDIAN (phần tử ở giữa)
+  int rawValue = readings[numReadings / 2];
+
+  // EXPONENTIAL MOVING AVERAGE: Làm mịn giá trị theo thời gian
+  static int lastRawValue = -1;
+  if (lastRawValue == -1) {
+    lastRawValue = rawValue;
+  } else {
+    // EMA: 70% cũ + 30% mới
+    rawValue = (lastRawValue * 7 + rawValue * 3) / 10;
+    lastRawValue = rawValue;
+  }
 
   // Debug: In giá trị raw để hiệu chỉnh
   static unsigned long lastDebugPrint = 0;
