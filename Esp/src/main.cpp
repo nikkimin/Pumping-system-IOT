@@ -250,7 +250,26 @@ void loop() {
     } else if (cmd == "help") {
       Serial.println("\n📋 Available Commands:");
       Serial.println("   debug / mqtt / test  → Run MQTT diagnostic");
+      Serial.println("   status               → Show current sensor values");
+      Serial.println("   auto                 → Show auto mode logic");
       Serial.println("   help                 → Show this help\n");
+    } else if (cmd == "status") {
+      Serial.println("\n📊 Current Status:");
+      Serial.printf("   Soil Moisture: %d%%\n", soilMoisture);
+      Serial.printf("   Rain Probability: %d%%\n", rainStatus);
+      Serial.printf("   Pump Status: %s\n", pumpStatus ? "ON" : "OFF");
+      Serial.printf("   Auto Mode: %s\n", autoMode ? "ENABLED" : "DISABLED");
+      Serial.printf("   Pump Speed: %d%%\n", pumpSpeed);
+      Serial.println();
+    } else if (cmd == "auto") {
+      Serial.println("\n🤖 Auto Mode Logic:");
+      Serial.printf("   Soil: %d%% (threshold: <30%%)\n", soilMoisture);
+      Serial.printf("   Rain: %d%% (threshold: >75%%)\n", rainStatus);
+      bool shouldPump = (soilMoisture < 30 && rainStatus < 75);
+      Serial.printf("   Should pump: %s\n", shouldPump ? "YES ✅" : "NO ❌");
+      Serial.printf("   Current pump: %s\n", pumpStatus ? "ON" : "OFF");
+      Serial.printf("   Auto mode: %s\n", autoMode ? "ACTIVE" : "INACTIVE");
+      Serial.println();
     }
   }
 
@@ -1130,33 +1149,61 @@ int getCurrentHour() {
 
 void checkAutoWatering() {
   static unsigned long lastCheck = 0;
-  if (millis() - lastCheck < 30000)
+  const unsigned long CHECK_INTERVAL =
+      10000; // Kiểm tra mỗi 10 giây (thay vì 30s)
+
+  // Throttle checking để tránh spam
+  if (millis() - lastCheck < CHECK_INTERVAL) {
     return;
+  }
   lastCheck = millis();
 
-  int currentHour = getCurrentHour();
+  // Ngưỡng điều kiện (tốt hơn logic cũ chỉ check theo giờ)
+  const int SOIL_THRESHOLD = 30; // Độ ẩm đất < 30% → cần tưới (thay vì 40%)
+  const int RAIN_THRESHOLD = 75; // Mưa > 75% → không tưới
 
-  if (currentHour == -1)
-    return;
+  // Logic auto watering - HOẠT ĐỘNG 24/7, KHÔNG CHỈ 6H & 17H
+  bool shouldPumpOn = false;
+  String reason = "";
 
-  // Logic tưới tự động
-  // Chỉ tưới khi khả năng mưa < 75% (ngưỡng "Có mưa")
-  if ((currentHour == 6 || currentHour == 17) && rainStatus < 75 &&
-      soilMoisture < 40) {
-    if (!pumpStatus) {
-      UnoSerial.println("PUMP_ON");
-      pumpStatus = true;
-      String reason = "Auto: Hour " + String(currentHour) + ", Soil " +
-                      String(soilMoisture) + "%";
-      addLog(reason);
-      publishPumpStatus(reason);
+  // Điều kiện 1: Đất khô (soil < 30%)
+  if (soilMoisture < SOIL_THRESHOLD) {
+    // Điều kiện 2: Không mưa nhiều (rain < 75%)
+    if (rainStatus < RAIN_THRESHOLD) {
+      shouldPumpOn = true;
+      reason = "Auto: Dry soil (" + String(soilMoisture) + "%), low rain (" +
+               String(rainStatus) + "%)";
+    } else {
+      shouldPumpOn = false;
+      reason = "Auto: Dry soil but raining (" + String(rainStatus) + "%)";
     }
   } else {
-    if (pumpStatus) {
+    shouldPumpOn = false;
+    reason = "Auto: Soil OK (" + String(soilMoisture) + "%)";
+  }
+
+  // Chỉ thay đổi nếu trạng thái khác
+  if (shouldPumpOn != pumpStatus) {
+    if (shouldPumpOn) {
+      UnoSerial.println("PUMP_ON");
+      UnoSerial.flush();
+      delay(50);
+      pumpStatus = true;
+      prevPumpStatus = true;
+      addLog(reason);
+      publishPumpStatus(reason);
+      Serial.println("✅ AUTO: Pump turned ON");
+      Serial.printf("   Soil: %d%%, Rain: %d%%\n", soilMoisture, rainStatus);
+    } else {
       UnoSerial.println("PUMP_OFF");
+      UnoSerial.flush();
+      delay(50);
       pumpStatus = false;
-      addLog("Auto: Pump OFF");
-      publishPumpStatus("Auto: conditions not met");
+      prevPumpStatus = false;
+      addLog(reason);
+      publishPumpStatus(reason);
+      Serial.println("⏸️ AUTO: Pump turned OFF");
+      Serial.printf("   Soil: %d%%, Rain: %d%%\n", soilMoisture, rainStatus);
     }
   }
 }
