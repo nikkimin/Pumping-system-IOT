@@ -128,18 +128,18 @@ int readRainSensor() {
 
   // MOVING AVERAGE FILTER: Giữ 70% giá trị cũ + 30% giá trị mới
   // Điều này làm mịn giá trị theo thời gian, tránh nhảy đột ngột
-  static int lastRawValue = -1;
-  if (lastRawValue == -1) {
-    lastRawValue = rawValue; // Lần đầu tiên
+  static int lastRainRawValue = -1; // ĐỔI TÊN: Riêng cho cảm biến mưa
+  if (lastRainRawValue == -1) {
+    lastRainRawValue = rawValue; // Lần đầu tiên
   } else {
     // Exponential Moving Average (EMA)
-    rawValue = (lastRawValue * 7 + rawValue * 3) / 10;
-    lastRawValue = rawValue;
+    rawValue = (lastRainRawValue * 7 + rawValue * 3) / 10;
+    lastRainRawValue = rawValue;
   }
 
   // Debug: In giá trị raw mỗi 10 giây
-  static unsigned long lastDebug = 0;
-  if (millis() - lastDebug >= 10000) {
+  static unsigned long lastRainDebug = 0; // ĐỔI TÊN: Riêng cho debug mưa
+  if (millis() - lastRainDebug >= 10000) {
     Serial.print("Rain Sensor Raw: ");
     Serial.print(rawValue);
     Serial.print(" (DRY=");
@@ -147,7 +147,7 @@ int readRainSensor() {
     Serial.print(", WET=");
     Serial.print(RAIN_WET_VALUE);
     Serial.println(")");
-    lastDebug = millis();
+    lastRainDebug = millis();
   }
 
   // Giới hạn giá trị trong khoảng calibration
@@ -190,18 +190,18 @@ int readSoilMoisture() {
   int rawValue = readings[numReadings / 2];
 
   // EXPONENTIAL MOVING AVERAGE: Làm mịn giá trị theo thời gian
-  static int lastRawValue = -1;
-  if (lastRawValue == -1) {
-    lastRawValue = rawValue;
+  static int lastSoilRawValue = -1; // ĐỔI TÊN: Riêng cho cảm biến đất
+  if (lastSoilRawValue == -1) {
+    lastSoilRawValue = rawValue;
   } else {
     // EMA: 70% cũ + 30% mới
-    rawValue = (lastRawValue * 7 + rawValue * 3) / 10;
-    lastRawValue = rawValue;
+    rawValue = (lastSoilRawValue * 7 + rawValue * 3) / 10;
+    lastSoilRawValue = rawValue;
   }
 
   // Debug: In giá trị raw để hiệu chỉnh
-  static unsigned long lastDebugPrint = 0;
-  if (millis() - lastDebugPrint >= 5000) { // Mỗi 5 giây
+  static unsigned long lastSoilDebug = 0; // ĐỔI TÊN: Riêng cho debug đất
+  if (millis() - lastSoilDebug >= 5000) { // Mỗi 5 giây
     Serial.print("Soil Raw Value: ");
     Serial.print(rawValue);
     Serial.print(" (DRY=");
@@ -209,7 +209,7 @@ int readSoilMoisture() {
     Serial.print(", WET=");
     Serial.print(WET_VALUE);
     Serial.println(")");
-    lastDebugPrint = millis();
+    lastSoilDebug = millis();
   }
 
   // Giới hạn giá trị
@@ -286,8 +286,19 @@ void controlPumpFromESP() {
 void sendSensorData() {
   StaticJsonDocument<200> doc;
 
-  doc["soil_moisture"] = readSoilMoisture();
-  doc["rain"] = readRainSensor();
+  // ĐỌC ĐỘ ẨM ĐẤT TRƯỚC (A0)
+  int soilValue = readSoilMoisture();
+
+  // DELAY 10ms để ADC kịp chuyển đổi từ kênh A0 sang A1
+  // Arduino ADC chỉ có 1 converter, cần thời gian chuyển kênh
+  delay(10);
+
+  // ĐỌC CẢM BIẾN MƯA (A1) - Hoàn toàn độc lập
+  int rainValue = readRainSensor();
+
+  // Gán vào JSON
+  doc["soil_moisture"] = soilValue;
+  doc["rain"] = rainValue;
   doc["pump_status"] = pumpState;
 
   String jsonString;
@@ -330,8 +341,8 @@ void controlStatusLED() {
   static bool ledState = false;
 
   if (!espConnected) {
-    // Nhấp nháy nhanh khi mất kết nối (200ms)
-    if (millis() - lastBlink > 200) {
+    // Nhấp nháy nhanh khi mất kết nối (1000ms)
+    if (millis() - lastBlink > 1000) {
       digitalWrite(STATUS_LED, ledState);
       ledState = !ledState;
       lastBlink = millis();
@@ -340,8 +351,8 @@ void controlStatusLED() {
     // Bật sáng khi bơm đang chạy
     digitalWrite(STATUS_LED, HIGH);
   } else {
-    // Nhấp nháy chậm khi kết nối bình thường (1000ms)
-    if (millis() - lastBlink > 1000) {
+    // Nhấp nháy chậm khi kết nối bình thường (10000ms)
+    if (millis() - lastBlink > 10000) {
       digitalWrite(STATUS_LED, ledState);
       ledState = !ledState;
       lastBlink = millis();
