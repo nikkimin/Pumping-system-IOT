@@ -131,6 +131,14 @@ void setup() {
   loadWiFiCreds();
   loadSetupFlag();
 
+  // Cấu hình WiFiManager timeout để tự động chuyển sang AP mode
+  wm.setConnectTimeout(30); // Timeout 30 giây để kết nối WiFi đã lưu
+  wm.setConfigPortalTimeout(
+      180); // AP mode tồn tại 180 giây (3 phút) nếu không config
+
+  Serial.println("🔄 WiFiManager: Attempting to connect to saved WiFi...");
+  Serial.println("   (Will start AP mode if connection fails after 30s)");
+
   // WiFiManager tự động kết nối
   if (wm.autoConnect("SmartIrrigation_AP", "12345678")) {
     Serial.println("✅ Connected to WiFi using WiFiManager");
@@ -140,6 +148,33 @@ void setup() {
     addLog("IP: " + WiFi.localIP().toString());
     wifiConfigured = true;
 
+    // 🔧 FIX DNS: Cấu hình Google DNS và Cloudflare DNS thủ công
+    Serial.println("🔧 Configuring custom DNS servers...");
+    IPAddress primaryDNS(8, 8, 8, 8);   // Google DNS
+    IPAddress secondaryDNS(1, 1, 1, 1); // Cloudflare DNS
+    WiFi.config(WiFi.localIP(), WiFi.gatewayIP(), WiFi.subnetMask(), primaryDNS,
+                secondaryDNS);
+    Serial.printf("✅ DNS configured: Primary=%s, Secondary=%s\n",
+                  primaryDNS.toString().c_str(),
+                  secondaryDNS.toString().c_str());
+
+    // Tăng delay để DNS áp dụng hoàn toàn
+    delay(3000); // Tăng từ 1000ms lên 3000ms
+
+    // Test DNS resolution
+    Serial.println("🧪 Testing DNS resolution...");
+    IPAddress testIP;
+    if (WiFi.hostByName(HIVEMQ_HOST, testIP)) {
+      Serial.printf("✅ DNS works! %s -> %s\n", HIVEMQ_HOST,
+                    testIP.toString().c_str());
+    } else {
+      Serial.println(
+          "❌ DNS still failing - check router settings or firewall");
+      Serial.println("   → Router may be blocking DNS queries from ESP32");
+      Serial.println(
+          "   → Try rebooting router or checking ESP32 MAC address whitelist");
+    }
+
   } else {
     Serial.println("❌ Failed to connect to WiFi, starting AP mode");
     Serial.println("🌐 Access captive portal at: http://" +
@@ -147,23 +182,39 @@ void setup() {
     addLog("AP Mode: SmartIrrigation_AP (12345678)");
   }
 
-  // Khởi tạo thời gian
-  configTzTime(TZ_INFO, ntpServer);
+  // Khởi tạo thời gian với nhiều NTP servers để tăng độ tin cậy
+  Serial.println("🕒 Configuring NTP time sync (multiple servers)...");
+  // Sử dụng 3 NTP servers cùng lúc để tăng khả năng thành công
+  configTime(0, 0, "pool.ntp.org", "time.google.com", "time.cloudflare.com");
 
   Serial.print("⏳ Waiting for time sync");
   int retry = 0;
   while (time(nullptr) < 1600000000 &&
-         retry < 20) { // Timestamp hợp lệ > năm 2020
+         retry < 60) { // Tăng timeout lên 60 lần (30 giây)
     delay(500);
     Serial.print(".");
     retry++;
+
+    // Thử lại với server khác sau 20 lần thất bại (10 giây)
+    if (retry == 20) {
+      Serial.println("\n🔄 Trying alternative NTP servers...");
+      configTime(0, 0, "time.nist.gov", "time.windows.com",
+                 "asia.pool.ntp.org");
+      Serial.print("⏳ Continuing");
+    }
   }
+
   if (time(nullptr) > 1600000000) {
-    Serial.println("\n✅ Time synced!");
+    Serial.println("\n✅ Time synced successfully!");
     time_t now = time(nullptr);
     Serial.printf("🕒 Current time: %s", ctime(&now));
+    Serial.printf("📅 Timestamp: %ld\n", (long)now);
   } else {
-    Serial.println("\n⚠️ Time sync failed, SSL may fail");
+    Serial.println("\n❌ Time sync FAILED after 30 seconds!");
+    Serial.println("   → Check: Internet connection, Router firewall blocking "
+                   "NTP (UDP port 123)");
+    Serial.println("   → Current timestamp: " + String((long)time(nullptr)));
+    Serial.println("   ⚠️ TLS/SSL certificate validation WILL FAIL!");
   }
 
   // Thiết lập web server
@@ -171,6 +222,13 @@ void setup() {
 
   // Thiết lập MQTT
   setupMQTT();
+
+  // Tự động chạy diagnostic nếu NTP failed (giúp debug)
+  if (time(nullptr) < 1600000000) {
+    Serial.println("\n⚠️ Time sync failed - Running automatic diagnostic...");
+    delay(1000);
+    MQTTDebugger::debugMQTTConnection(espClient, mqttClient);
+  }
 
   Serial.println("✅ System initialized successfully");
 }
